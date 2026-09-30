@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node server.js",
-    "build": "node build.mjs"
+    "build": "npm ci --ignore-scripts && node build.mjs"
   },
   "dependencies": {
     "pg": "^8.16.3"

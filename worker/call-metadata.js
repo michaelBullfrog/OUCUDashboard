@@ -35,7 +35,7 @@ export function transferNodeCounts(data){
   if(!name||!String(name).trim()){unidentified++;continue}
   const node=String(name).trim();counts.set(node,(counts.get(node)||0)+1);
  }
- return {updatedAt:data.updatedAt,total,unidentified,nodes:[...counts].map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name))};
+ return {updatedAt:data.updatedAt,total,unidentified,leftBeforeQueue:nodeOutcomeCounts(data).totals.leftBeforeQueue,nodes:[...counts].map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name))};
 }
 
 export function nodeOutcomeCounts(data){

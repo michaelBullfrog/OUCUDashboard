@@ -6,6 +6,8 @@ import worker from './worker/index.js';
 const required=['WEBEX_CLIENT_ID','WEBEX_CLIENT_SECRET','WEBEX_ORG_ID','APP_SECRET'];
 for(const k of required)if(!process.env[k])throw new Error(`Missing ${k}`);
 const origin=new URL(process.env.APP_ORIGIN||process.env.RENDER_EXTERNAL_URL).origin;
+const allowedOrigins=new Set([origin,...(process.env.RENDER_EXTERNAL_URL?[new URL(process.env.RENDER_EXTERNAL_URL).origin]:[])]);
+function trustedOrigin(value){try{return value===new URL(value).origin&&allowedOrigins.has(value)}catch{return false}}
 const dir=process.env.DATA_DIR||'./data';await fs.mkdir(dir,{recursive:true,mode:0o700});
 const filename=k=>path.join(dir,createHash('sha256').update(k).digest('hex')+'.json');
 const env={...process.env,APP_ORIGIN:origin,OWNER_EMAIL:'render-dashboard-owner',WEBEX_API_BASE:process.env.WEBEX_API_BASE||'https://api.wxcc-us1.cisco.com',TOKEN_ENCRYPTION_KEY:createHash('sha256').update(process.env.APP_SECRET).digest('hex'),BUCKET:{async get(k){try{const content=await fs.readFile(filename(k),'utf8');return{json:async()=>JSON.parse(content)}}catch(e){if(e.code==='ENOENT')return null;throw e}},async put(k,v){const target=filename(k),tmp=target+'.'+randomBytes(8).toString('hex');await fs.writeFile(tmp,v,{mode:0o600});await fs.rename(tmp,target)},async delete(k){await fs.rm(filename(k),{force:true})}}};
@@ -30,7 +32,7 @@ const server=http.createServer(async(req,res)=>{try{
  }
  if(pathName==='/admin/login'&&req.method==='POST'){
   if(!adminEnabled()){send(res,503,'Admin access is disabled.');return}
-  if(req.headers.origin!==origin){send(res,403,'Invalid request origin.');return}
+  if(!trustedOrigin(req.headers.origin)){send(res,403,'Invalid request origin.');return}
   const client=req.socket.remoteAddress||'unknown';const now=Date.now();for(const [k,v]of adminAttempts)if(v.until<now)adminAttempts.delete(k);const attempt=adminAttempts.get(client)||{count:0,until:now+900000};if(attempt.count>=5){send(res,429,'Too many admin login attempts. Try again in 15 minutes.',{'Retry-After':String(Math.ceil((attempt.until-now)/1000))});return}
   const parts=[];let size=0;for await(const part of req){size+=part.length;if(size>2048){send(res,413,'Request too large.');return}parts.push(part)}const form=new URLSearchParams(Buffer.concat(parts).toString());const csrf=form.get('csrf');if(!csrf||csrf!==cookies(req).oucu_admin_state||!verified(csrf)){send(res,403,'Login expired or invalid. Return to /admin and try again.');return}
   const received=createHash('sha256').update(form.get('password')||'').digest();const expected=createHash('sha256').update(env.ADMIN_ACCESS_PASSWORD).digest();if(!timingSafeEqual(received,expected)){attempt.count++;adminAttempts.set(client,attempt);send(res,401,adminPage(csrf,'Incorrect admin password.'),{'Content-Type':'text/html;charset=utf-8'});return}
@@ -50,12 +52,12 @@ const server=http.createServer(async(req,res)=>{try{
   const session=signed({id:profile.id,email:profile.emails?.[0]||'',orgId:env.WEBEX_ORG_ID,exp:Date.now()+8*3600000});send(res,303,'',{Location:'/','Set-Cookie':[cookieValue('oucu_session',session,28800),cookieValue('oucu_login_state','',0)]});return
  }
  const session=verified(cookies(req).oucu_session||'');if(!session||session.orgId!==env.WEBEX_ORG_ID){send(res,303,'',{Location:'/login'});return}
- if(pathName==='/logout'&&req.method==='POST'){if(req.headers.origin!==origin){send(res,403,'Invalid origin');return}send(res,303,'',{Location:'/login','Set-Cookie':cookieValue('oucu_session','',0)});return}
+ if(pathName==='/logout'&&req.method==='POST'){if(!trustedOrigin(req.headers.origin)){send(res,403,'Invalid origin');return}send(res,303,'',{Location:'/login','Set-Cookie':cookieValue('oucu_session','',0)});return}
  const admins=(env.WEBEX_ADMIN_EMAILS||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);const isAdmin=session.admin===true||admins.includes(session.email.toLowerCase());
  if(pathName==='/api/session'){send(res,200,JSON.stringify({email:session.email,isAdmin}),{'Content-Type':'application/json'});return}
  if(pathName.startsWith('/settings/')||pathName.startsWith('/oauth/')||pathName==='/api/webex/check'){if(!isAdmin){send(res,403,'Only a configured dashboard administrator can manage reporting authorization. Set WEBEX_ADMIN_EMAILS in Render.');return}}
  const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>16384){res.writeHead(413);res.end('Request too large');return}chunks.push(chunk)}
- const headers=new Headers();for(const [k,v]of Object.entries(req.headers)){if(v&&!['host','authorization','oai-authenticated-user-id','oai-authenticated-user-email','content-length'].includes(k.toLowerCase()))headers.set(k,Array.isArray(v)?v.join(','):v)}headers.set('oai-authenticated-user-email',isAdmin?env.OWNER_EMAIL:'oucu-viewer');
+ const headers=new Headers();for(const [k,v]of Object.entries(req.headers)){if(v&&!['host','authorization','oai-authenticated-user-id','oai-authenticated-user-email','content-length'].includes(k.toLowerCase()))headers.set(k,Array.isArray(v)?v.join(','):v)}headers.set('oai-authenticated-user-email',isAdmin?env.OWNER_EMAIL:'oucu-viewer');if(trustedOrigin(headers.get('origin')))headers.set('origin',origin);
  const request=new Request(new URL(req.url,origin),{method:req.method,headers,...(['GET','HEAD'].includes(req.method)?{}:{body:Buffer.concat(chunks)})});const response=await worker.fetch(request,env);const out=Object.fromEntries(response.headers);if(response.headers.getSetCookie().length)out['set-cookie']=response.headers.getSetCookie();out['X-Content-Type-Options']='nosniff';out['Referrer-Policy']='no-referrer';res.writeHead(response.status,out);res.end(Buffer.from(await response.arrayBuffer()));
  }catch(e){console.error('Request failed',e.message);res.writeHead(500,{'Content-Type':'text/plain'});res.end('Service unavailable. Check the Render logs.')}});
 server.listen(Number(process.env.PORT)||10000,'0.0.0.0',()=>console.log('OUCU dashboard running'));

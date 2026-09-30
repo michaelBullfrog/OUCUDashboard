@@ -22,7 +22,12 @@ const max=Math.max(1,...data.hourly.map(r=>r.offered));let svg='<svg viewBox="0 
 }
 async function refresh(){if(busy)return;busy=true;$('refresh').disabled=true;try{const r=await fetch('/api/dashboard',{cache:'no-store'});if(r.status===401){location.href='/login';return}const v=await r.json();if(!r.ok)throw new Error(v.error||'Reporting unavailable');data=v;const prior=$('queue').value;$('queue').innerHTML='<option value="all">All queues</option>'+data.queues.filter(q=>q.id!=='unassigned').map(q=>`<option value="${escapeText(q.id)}">${escapeText(q.name)}</option>`).join('');$('queue').value=data.queues.some(q=>q.id!=='unassigned'&&q.id===prior)?prior:'all';render();$('connection').textContent='Webex reporting';$('headline').textContent=data.offered?'OUCU reporting connected':'No inbound voice contacts reported today';$('subline').textContent=`${data.queues.length} reported queues · ${data.recordCount} records loaded across all pages`;$('updated').textContent='Updated '+new Date(data.updatedAt).toLocaleTimeString('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'2-digit'})+' ET';}catch(e){$('connection').textContent=data?'Reporting stale':'Reporting unavailable';$('headline').textContent=data?'Showing last successful report':'Reporting unavailable';$('subline').textContent=e.message;}finally{busy=false;$('refresh').disabled=false}}
 $('queue').onchange=render;$('refresh').onclick=refresh;$('fullscreen').onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{});
-function clock(){$('clock').textContent=new Date().toLocaleTimeString('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'2-digit'})+' ET'}clock();setInterval(clock,30000);refresh();setInterval(refresh,60000);
+const easternDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const openedDay=easternDay();
+function checkDay(){if(easternDay()!==openedDay){location.reload();return false}return true}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkDay()});
+window.addEventListener('pageshow',checkDay);
+function clock(){if(!checkDay())return;$('clock').textContent=new Date().toLocaleTimeString('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'2-digit'})+' ET'}clock();setInterval(clock,1000);refresh();setInterval(refresh,60000);
 fetch('/api/session').then(r=>r.json()).then(s=>{$('webex-link').hidden=!s.isAdmin;$('call-metadata-link').hidden=!s.isAdmin}).catch(()=>{$('webex-link').hidden=true});
 
 

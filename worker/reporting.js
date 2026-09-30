@@ -49,7 +49,7 @@ export function summarize(tasks, now, start, fcrFrom=easternStart(start-1)) {
  return {updatedAt:new Date(now).toISOString(),from:new Date(start).toISOString(),mode:'reporting',queueDiagnostics,...metrics(voice),fcr:estimateFcr(tasks,now,fcrFrom),queues:[...groups.values()].map(g=>({id:g.id,name:g.name,...metrics(g.tasks),fcr:estimateFcr(tasks,now,fcrFrom,g.id)})),hourly,recordCount:tasks.length};
 }
 export async function dashboardData(env,getToken){
- if(cached&&Date.now()-cached.time<60000)return cached.value;
+ if(cached&&Date.parse(cached.value.from)===easternStart()&&Date.now()-cached.time<60000)return cached.value;
  if(Date.now()<retryAt)throw new Error('Webex reporting is rate limited. Please retry shortly.');
  if(pending)return pending;
  pending=(async()=>{const token=await getToken();if(!token)throw new Error('An administrator must connect Webex reporting first.');const now=Date.now(),start=easternStart(now),fcrFrom=easternStart(start-1),tasks=new Map(),seen=new Set();let cursor='NA';
@@ -64,5 +64,5 @@ export async function dashboardData(env,getToken){
  const next=result.pageInfo.endCursor;if(!next||seen.has(next))throw new Error('Webex pagination did not complete. Totals are unavailable.');seen.add(next);cursor=next;
  }
  throw new Error('Webex reporting exceeded the pagination limit. Totals are unavailable.');
- })();try{return await pending}finally{pending=null}
+ })();try{const value=await pending;if(Date.parse(value.from)!==easternStart()){pending=null;return dashboardData(env,getToken)}return value}finally{pending=null}
 }

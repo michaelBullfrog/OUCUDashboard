@@ -12,7 +12,7 @@ async function query(env,token,from,to,cursor='NA',id=null,after=null){
 }
 export function describeCall(t){
  const nodes=[...new Map((t.activities?.nodes||[]).map(n=>[n.id,n])).values()].sort((a,b)=>(a.createdTime||0)-(b.createdTime||0));
- return {...t,activities:{...t.activities,nodes},latestReportedNode:nodes.at(-1)||null,activityHistoryComplete:t.activities?.pageInfo?.hasNextPage===false&&nodes.length===(t.activities?.totalCount??nodes.length)};
+ return {...t,activities:{...t.activities,nodes},latestReportedEvent:nodes.at(-1)||null,latestReportedNode:nodes.filter(n=>n.activityName&&String(n.activityName).trim()).at(-1)||null,activityHistoryComplete:t.activities?.pageInfo?.hasNextPage===false&&nodes.length===(t.activities?.totalCount??nodes.length)};
 }
 export async function unqueuedCalls(env,getToken){
  if(cache&&Date.now()-cache.time<60000)return cache.value;
@@ -43,7 +43,7 @@ export function nodeOutcomeCounts(data){
  for(const t of data.calls){
   const type=String(t.terminationType||'').toLowerCase();
   const transfers=(t.activities?.nodes||[]).filter(n=>String(n.activityType||'').toLowerCase().replace(/[^a-z]/g,'')==='blindtransfer').sort((a,b)=>(a.createdTime||0)-(b.createdTime||0));
-  const reported=t.activityHistoryComplete?(type==='transfertodn'?transfers.at(-1)?.activityName||t.flowActivityName:t.flowActivityName||t.latestReportedNode?.activityName):null;
+  const reported=t.activityHistoryComplete?(type==='transfertodn'?transfers.at(-1)?.activityName||t.flowActivityName:t.latestReportedNode?.activityName||t.flowActivityName):null;
   const name=String(reported||'Node unavailable').trim()||'Node unavailable';
   if(!groups.has(name))groups.set(name,{name,contacts:0,handled:0,transferred:0,selfService:0,abandoned:0,short:0,active:0,other:0});
   const g=groups.get(name);g.contacts++;

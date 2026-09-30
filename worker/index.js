@@ -27,7 +27,7 @@ export default {async fetch(request,env){const u=new URL(request.url);try{
  if(u.pathname==='/api/webex/unqueued-calls'||u.pathname==='/settings/calls'){
  let data=await unqueuedCalls(env,()=>access(env));
  const selectedNodes=(u.searchParams.get('nodes')||'').split(',').map(x=>x.trim()).filter(Boolean);
- if(selectedNodes.length)data={...data,calls:data.calls.filter(t=>selectedNodes.includes(nodeOutcomeCounts({calls:[t]}).rows[0]?.name))};
+ if(selectedNodes.length)data={...data,calls:data.calls.filter(t=>selectedNodes.includes(nodeOutcomeCounts({calls:[t]}).rows[0]?.name)||selectedNodes.includes(t.flowActivityName))};
  if(u.pathname.startsWith('/api/')){const response=json(data);response.headers.set('Content-Disposition','attachment; filename="oucu-unqueued-calls.json"');return response}
  const esc=x=>String(x??'Not reported').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const time=x=>x?new Date(x).toLocaleString('en-US',{timeZone:'America/New_York'})+' ET':'Not reported';

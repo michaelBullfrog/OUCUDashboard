@@ -11,13 +11,13 @@ export function easternStart(now=Date.now()) {
 
 const DAY=86400000;
 function callerKey(value){const raw=String(value||'').trim();if(!/^[+\d\s().-]+$/.test(raw))return null;let digits=raw.replace(/\D/g,'');if(digits.length===10)digits='1'+digits;return digits.length>=7&&digits.length<=15?digits:null}
-export function estimateFcr(tasks, now, from, queueId=null){
+export function estimateFcr(tasks, now, from, queueId=null,cohortTo=now){
  const inbound=tasks.filter(t=>String(t.channelType).toLowerCase()==='telephony'&&String(t.direction).toLowerCase()==='inbound');
  const byCaller=new Map();
  for(const t of inbound){const key=callerKey(t.origin);if(key){if(!byCaller.has(key))byCaller.set(key,[]);byCaller.get(key).push(t)}}
  const totals={rate:null,evaluated:0,noRepeat:0,repeated:0,pending:0,unmeasurable:0,windowHours:24,from:new Date(from).toISOString()};
  for(const t of inbound){
-  if(t.createdTime<from||t.createdTime>now||t.isActive!==false||t.isContactHandled!==true||(queueId!==null&&(t.lastQueue?.id||'unassigned')!==queueId))continue;
+  if(t.createdTime<from||t.createdTime>cohortTo||t.isActive!==false||t.isContactHandled!==true||(queueId!==null&&(t.lastQueue?.id||'unassigned')!==queueId))continue;
   const key=callerKey(t.origin),wrap=String(t.lastWrapUpCodeId||'').trim();
   if(!key||!wrap||!Number.isFinite(t.endedTime)||t.endedTime<t.createdTime){totals.unmeasurable++;continue}
   if(t.endedTime+DAY>now){totals.pending++;continue}

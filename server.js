@@ -12,7 +12,8 @@ function trustedOrigin(value){try{return value===new URL(value).origin&&allowedO
 const dir=process.env.DATA_DIR||'./data';await fs.mkdir(dir,{recursive:true,mode:0o700});
 const filename=k=>path.join(dir,createHash('sha256').update(k).digest('hex')+'.json');
 const env={...process.env,APP_ORIGIN:origin,OWNER_EMAIL:'render-dashboard-owner',WEBEX_API_BASE:process.env.WEBEX_API_BASE||'https://api.wxcc-us1.cisco.com',TOKEN_ENCRYPTION_KEY:createHash('sha256').update(process.env.APP_SECRET).digest('hex'),BUCKET:{async get(k){try{const content=await fs.readFile(filename(k),'utf8');return{json:async()=>JSON.parse(content)}}catch(e){if(e.code==='ENOENT')return null;throw e}},async put(k,v){const target=filename(k),tmp=target+'.'+randomBytes(8).toString('hex');await fs.writeFile(tmp,v,{mode:0o600});await fs.rename(tmp,target)},async delete(k){await fs.rm(filename(k),{force:true})}}};
-if(process.env.DATABASE_URL){
+async function initializeArchive(){
+ if(!process.env.DATABASE_URL||env.ARCHIVE)return;
  env.ARCHIVE=await createArchive(process.env.DATABASE_URL,env.WEBEX_ORG_ID);
  const diskBucket=env.BUCKET;
  env.BUCKET={
@@ -23,12 +24,13 @@ if(process.env.DATABASE_URL){
  for(const k of ['webex/tokens','webex/config','webex/reporting-check'])await env.BUCKET.get(k);
  console.log('OUCU database connected');
 }
+try{await initializeArchive()}catch(e){console.error('OUCU database unavailable:',e.code||e.message)}
 let archiveBusy=false;
 async function collectArchive(){
- if(!env.ARCHIVE||archiveBusy)return;archiveBusy=true;
- try{await syncArchive(env);console.log('OUCU archive sync completed')}catch(e){console.error('OUCU archive sync failed:',e.message)}finally{archiveBusy=false}
+ if(!process.env.DATABASE_URL||archiveBusy)return;archiveBusy=true;
+ try{await initializeArchive();await syncArchive(env);console.log('OUCU archive sync completed')}catch(e){console.error('OUCU archive sync failed:',e.message)}finally{archiveBusy=false}
 }
-if(env.ARCHIVE){setTimeout(collectArchive,10000).unref();setInterval(collectArchive,300000).unref()}
+if(process.env.DATABASE_URL){setTimeout(collectArchive,10000).unref();setInterval(collectArchive,300000).unref()}
 function signed(value){const body=Buffer.from(JSON.stringify(value)).toString('base64url');return body+'.'+createHmac('sha256',process.env.APP_SECRET).update(body).digest('base64url')}
 function verified(value){try{const [body,signature,...extra]=value.split('.');if(extra.length||!signature)return null;const expected=createHmac('sha256',process.env.APP_SECRET).update(body).digest();const got=Buffer.from(signature,'base64url');if(got.length!==expected.length||!timingSafeEqual(got,expected))return null;const result=JSON.parse(Buffer.from(body,'base64url'));return result.exp>Date.now()?result:null}catch{return null}}
 function cookies(req){return Object.fromEntries((req.headers.cookie||'').split(';').map(x=>x.trim().split(/=(.*)/s)).filter(x=>x.length>=2).map(x=>[x[0],x[1]]))}

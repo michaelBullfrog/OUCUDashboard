@@ -12,9 +12,12 @@ export function summarize(tasks, now, start) {
  const voice=tasks.filter(t=>Number.isFinite(t.createdTime)&&t.createdTime>=start&&t.createdTime<=now&&String(t.channelType).toLowerCase()==='telephony'&&String(t.direction).toLowerCase()==='inbound');
  const groups=new Map();
  function metrics(rows){const completed=rows.filter(t=>t.isActive===false),handled=completed.filter(t=>t.isContactHandled===true),abandoned=completed.filter(t=>String(t.contactHandleType).toLowerCase()==='abandoned');
+ const queued=completed.filter(t=>t.lastQueue?.id),answeredQueued=queued.filter(t=>t.isContactHandled===true);
+ const within15=answeredQueued.filter(t=>Number.isFinite(t.queueDuration)&&t.queueDuration<=15000&&t.queueDuration>=0).length;
+ const serviceLevel=queued.length&&answeredQueued.every(t=>Number.isFinite(t.queueDuration)&&t.queueDuration>=0)?100*within15/queued.length:null;
  const average=field=>handled.length&&handled.every(t=>Number.isFinite(t[field]))?handled.reduce((s,t)=>s+t[field],0)/handled.length:null;
  const talk=average('connectedDuration'),hold=average('holdDuration'),wrap=average('wrapupDuration');
- return {offered:rows.length,handled:handled.length,abandoned:abandoned.length,abandonRate:completed.length?100*abandoned.length/completed.length:null,queueTime:average('queueDuration'),talk,hold,wrap,handleTime:talk!==null&&wrap!==null?talk+wrap:null};}
+ return {serviceLevel,serviceLevelThresholdSeconds:15,serviceLevelEligible:queued.length,serviceLevelWithinThreshold:within15,offered:rows.length,handled:handled.length,abandoned:abandoned.length,abandonRate:completed.length?100*abandoned.length/completed.length:null,queueTime:average('queueDuration'),talk,hold,wrap,handleTime:talk!==null&&wrap!==null?talk+wrap:null};}
  for(const t of voice){const id=t.lastQueue?.id||'unassigned';if(!groups.has(id))groups.set(id,{id,name:t.lastQueue?.name||'No reported queue',tasks:[]});groups.get(id).tasks.push(t)}
  const hourly=Array.from({length:24},(_,hour)=>({hour,offered:0,handled:0,abandoned:0}));
  for(const t of voice){const hour=Number(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',hourCycle:'h23'}).format(new Date(t.createdTime)));if(!hourly[hour])continue;hourly[hour].offered++;if(t.isActive===false&&t.isContactHandled===true)hourly[hour].handled++;if(t.isActive===false&&String(t.contactHandleType).toLowerCase()==='abandoned')hourly[hour].abandoned++;}

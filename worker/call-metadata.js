@@ -99,3 +99,28 @@ export async function allCalls(env,getToken,date=null){
   if(allCache.size>=3)allCache.delete(allCache.keys().next().value);allCache.set(date,{time:Date.now(),value});return value;
  })();allPending.set(date,work);try{return await work}finally{allPending.delete(date)}
 }
+
+let waitingCache,waitingPending;
+export function waitingContacts(tasks,now){
+ const calls=tasks.filter(t=>t.isActive===true&&t.lastQueue?.id&&['queued','parked'].includes(String(t.status||'').toLowerCase())&&String(t.channelType).toLowerCase()==='telephony')
+ .map(t=>({id:t.id,number:t.origin||null,cnam:null,queueId:t.lastQueue.id,queue:t.lastQueue.name||'Queue',status:t.status,arrivedAt:Number.isFinite(t.createdTime)?new Date(t.createdTime).toISOString():null})).sort((a,b)=>String(a.arrivedAt).localeCompare(String(b.arrivedAt)));
+ return {updatedAt:new Date(now).toISOString(),count:calls.length,calls};
+}
+export async function waitingData(env,getToken){
+ if(waitingCache&&Date.now()-waitingCache.time<60000)return waitingCache.value;
+ if(waitingPending)return waitingPending;
+ waitingPending=(async()=>{
+  const token=await getToken();if(!token)throw Error('Connect Webex first');
+  const now=Date.now(),tasks=new Map(),seen=new Set();let cursor='NA';
+  for(let p=0;p<1000;p++){
+   const query='query($from: Long!, $to: Long!) { taskDetails(from:$from,to:$to,filter:{isActive:{equals:true}},pagination:{cursor:'+JSON.stringify(cursor)+'}) { tasks { id channelType createdTime origin isActive status lastQueue { id name } } pageInfo { hasNextPage endCursor } } }';
+   const r=await fetch(env.WEBEX_API_BASE+'/search?orgId='+encodeURIComponent(env.WEBEX_ORG_ID),{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query,variables:{from:easternStart(now-7*86400000),to:now}}),signal:AbortSignal.timeout(20000)});
+   if(!r.ok)throw Error('Queue reporting HTTP '+r.status);
+   const v=await r.json(),d=v.data?.taskDetails;if(v.errors?.length||!Array.isArray(d?.tasks)||typeof d.pageInfo?.hasNextPage!=='boolean')throw Error('Queue reporting response unavailable');
+   for(const t of d.tasks)tasks.set(t.id,t);
+   if(!d.pageInfo.hasNextPage){const value=waitingContacts([...tasks.values()],now);waitingCache={time:Date.now(),value};return value}
+   const next=d.pageInfo.endCursor;if(!next||seen.has(next))throw Error('Queue pagination incomplete');seen.add(next);cursor=next;
+  }
+  throw Error('Queue pagination limit exceeded');
+ })();try{return await waitingPending}finally{waitingPending=null}
+}

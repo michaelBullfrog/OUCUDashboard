@@ -1,7 +1,7 @@
 import { DASHBOARD, LOGO } from './assets.js';
 import { agentData } from './agents.js';
 import { dashboardData } from './reporting.js';
-import { unqueuedCalls, transferNodeCounts, nodeOutcomeCounts, queueRemainderCalls, allCalls, searchCalls } from './call-metadata.js';
+import { unqueuedCalls, transferNodeCounts, nodeOutcomeCounts, queueRemainderCalls, allCalls, searchCalls, waitingData } from './call-metadata.js';
 const enc=new TextEncoder();
 function json(value,status=200){return new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}})}
 function redirect(path,headers={}){return new Response(null,{status:303,headers:{Location:path,'Cache-Control':'no-store',...headers}})}
@@ -23,6 +23,7 @@ export default {async fetch(request,env){const u=new URL(request.url);try{
  if(u.pathname==='/api/transfer-nodes'&&request.method==='GET'){if(!request.headers.get('oai-authenticated-user-email'))return json({error:'Sign in required'},401);try{return json(transferNodeCounts(await unqueuedCalls(env,()=>access(env))))}catch(e){return json({error:'Transfer node counts are unavailable. An administrator can review Call metadata.'},503)}}
  if(u.pathname==='/api/node-outcomes'&&request.method==='GET'){if(!request.headers.get('oai-authenticated-user-email'))return json({error:'Sign in required'},401);try{return json(nodeOutcomeCounts(await unqueuedCalls(env,()=>access(env))))}catch(e){return json({error:'Node outcomes unavailable'},503)}}
  if(u.pathname==='/api/agents'&&request.method==='GET'){if(!request.headers.get('oai-authenticated-user-email'))return json({error:'Sign in required'},401);try{return json(await agentData(env,()=>access(env)))}catch(e){console.error('Agent reporting',e.message);return json({error:e.message},503)}}
+ if(u.pathname==='/api/waiting'&&request.method==='GET'){if(!request.headers.get('oai-authenticated-user-email'))return json({error:'Sign in required'},401);try{return json(await waitingData(env,()=>access(env)))}catch(e){return json({error:e.message},503)}}
  if(!owner(request,env))return json({error:'Only the dashboard owner can manage the Webex connection.'},403);
  if(!env.BUCKET||!env.TOKEN_ENCRYPTION_KEY)return page('<h1>Connection setup unavailable</h1><p>The secure storage configuration needs attention.</p><a href="/">Return to dashboard</a>');
 

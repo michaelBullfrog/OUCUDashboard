@@ -50,7 +50,7 @@ function renderAgents(){
  document.querySelectorAll('[data-queue-oncall]').forEach(el=>{el.textContent=agentReport&&!agentStale?(agentReport.queues.find(r=>r.id===el.dataset.queueOncall)?.onCall||0):'—'});
  if(!agentReport)return;
  const rows=agentReport.agents.filter(a=>q==='all'||a.queues.includes(q));
- $('agent-status').innerHTML='<div class="meta" style="margin-bottom:12px">Reported voice activity · On call includes hold and consultation. Queue filter shows agents on calls in that queue.</div>'+rows.map(a=>'<div style="padding:10px 0;border-top:1px solid var(--line)"><strong>'+escapeText(a.name)+'</strong><span style="float:right">'+escapeText(a.status)+'</span><div class="meta">'+escapeText(a.team)+'</div></div>').join('')+(rows.length?'':'<span class="meta">No matching active agent sessions reported</span>');
+ $('agent-status').innerHTML='<div class="meta" style="margin-bottom:12px">Reported voice activity · On call includes hold and consultation. Queue filter shows agents on calls in that queue.</div>'+rows.map(a=>'<div style="padding:10px 0;border-top:1px solid var(--line)"><strong>'+escapeText(a.name)+'</strong><span style="float:right">'+escapeText(a.status==='Idle'?'Idle · '+(a.idleCode||'Code not reported'):a.status)+'</span><div class="meta">'+escapeText(a.team)+'</div></div>').join('')+(rows.length?'':'<span class="meta">No matching active agent sessions reported</span>');
 }
 async function refreshAgents(){
  if(agentBusy)return;agentBusy=true;

@@ -1,7 +1,7 @@
 import { easternStart } from './reporting.js';
 let cache,pending,retryAt=0;
 const key=s=>String(s||'').toLowerCase().replace(/[^a-z]/g,'');
-const callStates=new Set(['connected','hold','consulting','consult','conference','conferencing','outdialconnected','outdialhold','outdialconsulting','outdialconference']);
+const callStates=new Set(['connected','hold','onhold','consulting','consult','conference','conferencing','outdialconnected','outdialhold','outdialconsulting','outdialconference']);
 export function summarizeAgents(sessions,now){
  const latest=new Map();
  for(const s of sessions){if(!s.agentId)throw Error('Agent ID missing');const old=latest.get(s.agentId);if(!old||s.startTime>old.startTime)latest.set(s.agentId,s)}
@@ -14,10 +14,14 @@ export function summarizeAgents(sessions,now){
    activities.push(...(c.activities.nodes||[]).filter(a=>a.isCurrentActivity===true));
   }
   const calls=activities.filter(a=>callStates.has(key(a.state))),wrap=activities.some(a=>key(a.state).includes('wrapup'));
-  const status=calls.length?'On call':wrap?'Wrap-up':key(s.state)==='available'?'Available':key(s.state)==='idle'?'Idle':String(s.state||'Unknown');
+  const current=[...activities].sort((a,b)=>(b.startTime||0)-(a.startTime||0))[0];
+  const state=key(current?.state||s.state);
+  const idleActivity=activities.filter(a=>key(a.state)==='idle').sort((a,b)=>(b.startTime||0)-(a.startTime||0))[0];
+  const idleCode=state==='idle'?(idleActivity?.idleCode?.name||null):null;
+  const status=calls.length?'On call':wrap?'Wrap-up':state==='ringing'||state==='outdialringing'?'Ringing':state==='notresponding'||state==='notresponded'?'Not responding':state==='available'?'Available':state==='idle'?'Idle':String(current?.state||s.state||'Unknown');
   const queueIds=[...new Set(calls.map(a=>a.queue?.id).filter(Boolean))];
   for(const id of queueIds){const a=calls.find(a=>a.queue?.id===id);if(!queues.has(id))queues.set(id,{id,name:a.queue.name||id,onCall:0});queues.get(id).onCall++}
-  agents.push({id:s.agentId,name:s.agentName||'Agent',team:s.teamName||'',status,reportedState:s.state||'Unknown',queues:queueIds});
+  agents.push({id:s.agentId,name:s.agentName||'Agent',team:s.teamName||'',status,idleCode:status==='Idle'?idleCode:null,idleCodeId:status==='Idle'?(idleActivity?.idleCode?.id||null):null,reportedState:s.state||'Unknown',voiceState:current?.state||null,queues:queueIds});
  }
  return {updatedAt:new Date(now).toISOString(),agents:agents.sort((a,b)=>a.name.localeCompare(b.name)),queues:[...queues.values()],onCall:agents.filter(a=>a.status==='On call').length};
 }
@@ -29,7 +33,7 @@ export async function agentData(env,getToken){
   const token=await getToken();if(!token)throw Error('Connect Webex reporting first');
   const now=Date.now(),sessions=new Map(),seen=new Set();let cursor='NA';
   for(let page=0;page<1000;page++){
-   const query='query($from: Long!, $to: Long!) { agentSession(from:$from,to:$to,pagination:{cursor:'+JSON.stringify(cursor)+'},extFilter:{channelInfo:{activities:{nodes:{isCurrentActivity:{equals:true}}}}}) { agentSessions { agentId agentName agentSessionId startTime isActive state teamName channelInfo { channelType activities(first:100) { nodes { id state startTime isCurrentActivity taskId queue { id name } } pageInfo { hasNextPage endCursor } } } } pageInfo { hasNextPage endCursor } } }';
+   const query='query($from: Long!, $to: Long!) { agentSession(from:$from,to:$to,pagination:{cursor:'+JSON.stringify(cursor)+'},extFilter:{channelInfo:{activities:{nodes:{isCurrentActivity:{equals:true}}}}}) { agentSessions { agentId agentName agentSessionId startTime isActive state teamName channelInfo { channelType activities(first:100) { nodes { id state startTime isCurrentActivity idleCode { id name } taskId queue { id name } } pageInfo { hasNextPage endCursor } } } } pageInfo { hasNextPage endCursor } } }';
    const r=await fetch(env.WEBEX_API_BASE+'/search?orgId='+encodeURIComponent(env.WEBEX_ORG_ID),{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query,variables:{from:easternStart(now-7*86400000),to:now}}),signal:AbortSignal.timeout(20000)});
    if(r.status===429){retryAt=Date.now()+60000;throw Error('Agent reporting rate limited')}
    if(!r.ok)throw Error('Agent reporting HTTP '+r.status);

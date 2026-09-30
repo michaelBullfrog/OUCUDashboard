@@ -45,15 +45,14 @@ export function nodeOutcomeCounts(data){
   const transfers=(t.activities?.nodes||[]).filter(n=>String(n.activityType||'').toLowerCase().replace(/[^a-z]/g,'')==='blindtransfer').sort((a,b)=>(a.createdTime||0)-(b.createdTime||0));
   const reported=t.activityHistoryComplete?(type==='transfertodn'?transfers.at(-1)?.activityName||t.flowActivityName:t.latestReportedNode?.activityName||t.flowActivityName):null;
   const name=String(reported||'Node unavailable').trim()||'Node unavailable';
-  if(!groups.has(name))groups.set(name,{name,contacts:0,handled:0,transferred:0,selfService:0,abandoned:0,short:0,active:0,other:0});
+  if(!groups.has(name))groups.set(name,{name,contacts:0,handled:0,transferred:0,leftBeforeQueue:0,inIvr:0,other:0});
   const g=groups.get(name);g.contacts++;
-  if(t.isActive===true){g.active++;continue}
+  if(t.isActive===true){if(t.queueCount===0)g.inIvr++;else g.other++;continue}
   if(t.isContactHandled===true)g.handled++;
   if(type==='transfertodn')g.transferred++;
-  else if(type==='self_service')g.selfService++;
-  else if(type==='abandoned')g.abandoned++;
-  else if(type==='short_call')g.short++;
+  else if(t.isActive===false&&t.queueCount===0&&String(t.terminationReason||'').trim().toLowerCase()==='customer left')g.leftBeforeQueue++;
   else g.other++;
  }
- return {updatedAt:data.updatedAt,total:data.calls.length,rows:[...groups.values()].sort((a,b)=>b.contacts-a.contacts||a.name.localeCompare(b.name))};
+ const totals={transferred:0,leftBeforeQueue:0,inIvr:0,other:0};for(const g of groups.values())for(const k of Object.keys(totals))totals[k]+=g[k];
+ return {updatedAt:data.updatedAt,total:data.calls.length,totals,rows:[...groups.values()].sort((a,b)=>b.contacts-a.contacts||a.name.localeCompare(b.name))};
 }

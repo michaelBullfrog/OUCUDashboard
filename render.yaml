@@ -15,13 +15,9 @@ services:
         value: 22
       - key: DATA_DIR
         value: /var/data
-      - key: APP_ORIGIN
-        sync: false
       - key: APP_SECRET
         generateValue: true
-      - key: DASHBOARD_USER
-        value: oucu
-      - key: DASHBOARD_PASSWORD
+      - key: WEBEX_ADMIN_EMAILS
         sync: false
       - key: WEBEX_CLIENT_ID
         value: C982b913a8752b4dba22b10cb2e8866589ecf0e1c03b82fd0aab70cf91e19787a

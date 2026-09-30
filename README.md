@@ -1,38 +1,40 @@
-# OUCU Contact Center — Render
+# OUCU Contact Center — Render with Webex SSO
 
-OUCU supervisor dashboard with the existing logo, colors, queue health labels, FCR KPI, queue selector and fullscreen mode. All metrics and agents are still demonstration data. Webex OAuth and a reporting access check are included; live KPI and agent mappings are the next step after authorization is verified.
+The existing OUCU dashboard design includes queue health, call-volume charts, agent status and FCR. Metrics remain labeled sample data. OAuth reporting authorization and a reporting access check are included; actual KPI mapping follows verification of OUCU responses.
 
-## Deploy
+## Deploy or update
 
-1. Create a private GitHub repository and upload the contents of this folder at its root.
-2. In Render, select New → Blueprint and select the repository. The included render.yaml creates a Node web service with a 1 GB persistent disk. This requires a paid service; review Render's displayed cost before creating it.
-3. Enter the prompted values:
-   - APP_ORIGIN: the actual Render service URL, without a trailing slash (for example, https://YOUR-SERVICE.onrender.com). If the final URL differs, update this variable after deployment.
-   - DASHBOARD_PASSWORD: a strong password you choose. Login username is oucu.
-   - WEBEX_CLIENT_SECRET: the secret from your OUCU Webex Integration.
-4. In the Webex Integration, add the exact redirect URI: YOUR_RENDER_URL/oauth/webex/callback. Keep cjp:config_read selected.
-5. Open the Render URL, sign in as oucu using your chosen password, and click Connect Webex → Authorize Webex. Sign in with the administrator account inside OUCU's organization.
-6. After returning, click Check reporting access. This queries the first page of task records in the last 24 hours. It does not claim to provide the full call count.
-7. Report the result so queue, agent, and historical KPI fields can be mapped using the actual responses. FCR also needs OUCU's agreed resolution measure, such as its wrap-up outcome or repeat-contact rule.
+1. Upload this folder's contents to your private GitHub repository at the root, replacing the earlier Render package.
+2. Deploy using Render New → Blueprint, or let your existing service redeploy from the updated repository. Runtime Node 22; build `npm run build`; start `npm start`; health check `/health`.
+3. Set WEBEX_CLIENT_SECRET to the Integration's secret.
+4. Set WEBEX_ADMIN_EMAILS to your administrator account email **inside OUCU's organization**. Multiple dashboard administrators can be listed separated by commas. This allowlist controls who can connect reporting, not who can view the dashboard.
+5. Keep APP_SECRET unchanged on updates. New Blueprint deployments generate it automatically. Existing manually configured services need a long random APP_SECRET. Keep DATA_DIR=/var/data and a persistent disk mounted at /var/data. The Blueprint specifies a paid starter service with a 1 GB disk; review cost in Render before deployment.
+6. Remove DASHBOARD_USER and DASHBOARD_PASSWORD. APP_ORIGIN is optional; remove it to automatically use Render's RENDER_EXTERNAL_URL. A custom domain can use an explicit APP_ORIGIN override. Do not use a stale URL.
+7. Update your Webex Integration:
+   - Add scope `spark:people_read` for dashboard sign-in.
+   - Keep scope `cjp:config_read` for reporting.
+   - Add BOTH exact redirect URIs, substituting your actual service URL:
+     - https://YOUR-SERVICE.onrender.com/auth/webex/callback
+     - https://YOUR-SERVICE.onrender.com/oauth/webex/callback
+8. Open the Render URL and click Sign in with Webex. Sign in using an account in OUCU's organization. Other organizations are rejected.
+9. As a configured administrator, click Connect Webex → Authorize Webex, then Check reporting access. This is a separate administrative reporting grant. Regular users sign in using only the identity scope.
 
-## Manual web-service settings
+## Configuration already included
 
-- Runtime: Node
-- Build: npm run build
-- Start: npm start
-- Health check: /health
-- Disk mount: /var/data (1 GB)
-- DATA_DIR: /var/data
-- NODE_VERSION: 22
-- DASHBOARD_USER: oucu
-- APP_SECRET: a long randomly generated secret; keep it unchanged because it encrypts stored tokens.
-- WEBEX_CLIENT_ID: already provided in render.yaml
-- WEBEX_ORG_ID: already provided in render.yaml
-- WEBEX_API_BASE: https://api.wxcc-us1.cisco.com (change if OUCU is provisioned in another region)
-- APP_ORIGIN, DASHBOARD_PASSWORD, WEBEX_CLIENT_SECRET: enter in Render Environment.
+WEBEX_CLIENT_ID=C982b913a8752b4dba22b10cb2e8866589ecf0e1c03b82fd0aab70cf91e19787a
+WEBEX_ORG_ID=1e2592c2-b4f8-47cf-ac33-039d235962e4
+WEBEX_API_BASE=https://api.wxcc-us1.cisco.com
 
-## Security and storage
+Change WEBEX_API_BASE only if OUCU is provisioned in a different region.
 
-All dashboard and connection routes require HTTP Basic authentication; /health exposes only status. Do not put credentials in the GitHub repository. Tokens and the client secret entered through the setup page are encrypted using AES-GCM and saved on the persistent disk. APP_SECRET must survive redeploys. The app refreshes the Webex access token when a reporting request needs it and expiry is approaching; it is not yet a background reporting poller. OAuth validates a short-lived state cookie and record.
+## Authentication and data
 
-This package does not migrate existing tokens from the earlier hosted preview. Authorize Webex again after the Render service is available. The earlier preview remains available until you choose to retire it.
+Webex verifies identity using /people/me; the organization UUID is checked on the server. Signed, HttpOnly, Secure cookies last eight hours. OAuth state protects sign-in and authorization. Sign out removes the local dashboard session; it does not sign out the user globally from Webex. Existing Webex sessions can complete sign-in without asking for credentials again.
+
+All OUCU organization members can view the dashboard after Webex authentication. WEBEX_ADMIN_EMAILS limits reporting connection management. Add a separate viewer allowlist if access should later be limited to specific supervisors.
+
+The administrative reporting tokens are AES-GCM encrypted on the persistent disk using APP_SECRET. Tokens refresh when a reporting check needs them and expiry is approaching. This version is not yet a background reporting poller. A reporting check requests only the first page of tasks in the last 24 hours; it is not a total call count.
+
+Actual FCR must use OUCU's agreed resolution measure (wrap-up outcomes or repeat-contact logic). The displayed sample FCR must not be treated as a real measured result.
+
+/health exposes only service status. All metrics, settings and reporting checks require sign-in. No secrets should be committed to GitHub. Existing credentials in the earlier hosted preview are not migrated; authorize reporting again on Render.

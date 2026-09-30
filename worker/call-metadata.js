@@ -2,7 +2,7 @@ import { easternStart } from './reporting.js';
 let cache,pending;
 async function query(env,token,from,to,cursor='NA',id=null,after=null){
  const activity='activities(first: 100'+(after?', after: '+JSON.stringify(after):'')+') { totalCount nodes { id activityName activityType eventName createdTime endedTime isActive } pageInfo { hasNextPage endCursor } }';
- const selection=id?'id '+activity:'id channelType direction createdTime endedTime origin destination isActive status isContactHandled contactHandleType queueCount terminationType terminationReason ivrScriptName flowActivityName flowActivitySequence lastEntryPoint { id name } lastQueue { id name } '+activity;
+ const selection=id?'id '+activity:'id channelType direction createdTime endedTime origin destination isActive status isContactHandled contactHandleType queueCount terminationType terminationReason lastWrapUpCodeId connectedDuration holdDuration wrapupDuration queueDuration ivrScriptName flowActivityName flowActivitySequence lastEntryPoint { id name } lastQueue { id name } '+activity;
  const q='query($from: Long!, $to: Long!) { taskDetails(from: $from, to: $to, '+(id?'filter: {id: {equals: '+JSON.stringify(id)+'}}, ':'')+'pagination: {cursor: '+JSON.stringify(cursor)+'}) { tasks { '+selection+' } pageInfo { hasNextPage endCursor } } }';
  const r=await fetch(env.WEBEX_API_BASE+'/search?orgId='+encodeURIComponent(env.WEBEX_ORG_ID),{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query:q,variables:{from,to}}),signal:AbortSignal.timeout(20000)});
  if(!r.ok)throw Error('Call metadata request returned HTTP '+r.status);

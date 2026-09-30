@@ -2,7 +2,8 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, createHmac, timingSafeEqual, randomBytes } from 'node:crypto';
-import worker from './worker/index.js';
+import worker, { syncArchive } from './worker/index.js';
+import { createArchive } from './database.js';
 const required=['WEBEX_CLIENT_ID','WEBEX_CLIENT_SECRET','WEBEX_ORG_ID','APP_SECRET'];
 for(const k of required)if(!process.env[k])throw new Error(`Missing ${k}`);
 const origin=new URL(process.env.APP_ORIGIN||process.env.RENDER_EXTERNAL_URL).origin;
@@ -11,6 +12,23 @@ function trustedOrigin(value){try{return value===new URL(value).origin&&allowedO
 const dir=process.env.DATA_DIR||'./data';await fs.mkdir(dir,{recursive:true,mode:0o700});
 const filename=k=>path.join(dir,createHash('sha256').update(k).digest('hex')+'.json');
 const env={...process.env,APP_ORIGIN:origin,OWNER_EMAIL:'render-dashboard-owner',WEBEX_API_BASE:process.env.WEBEX_API_BASE||'https://api.wxcc-us1.cisco.com',TOKEN_ENCRYPTION_KEY:createHash('sha256').update(process.env.APP_SECRET).digest('hex'),BUCKET:{async get(k){try{const content=await fs.readFile(filename(k),'utf8');return{json:async()=>JSON.parse(content)}}catch(e){if(e.code==='ENOENT')return null;throw e}},async put(k,v){const target=filename(k),tmp=target+'.'+randomBytes(8).toString('hex');await fs.writeFile(tmp,v,{mode:0o600});await fs.rename(tmp,target)},async delete(k){await fs.rm(filename(k),{force:true})}}};
+if(process.env.DATABASE_URL){
+ env.ARCHIVE=await createArchive(process.env.DATABASE_URL,env.WEBEX_ORG_ID);
+ const diskBucket=env.BUCKET;
+ env.BUCKET={
+  async get(k){let v=await env.ARCHIVE.get(k);if(v===null){const old=await diskBucket.get(k);if(old){v=JSON.stringify(await old.json());await env.ARCHIVE.put(k,v)}}return v===null?null:{json:async()=>JSON.parse(v)}},
+  async put(k,v){await env.ARCHIVE.put(k,v)},
+  async delete(k){await env.ARCHIVE.delete(k);await diskBucket.delete(k)}
+ };
+ for(const k of ['webex/tokens','webex/config','webex/reporting-check'])await env.BUCKET.get(k);
+ console.log('OUCU database connected');
+}
+let archiveBusy=false;
+async function collectArchive(){
+ if(!env.ARCHIVE||archiveBusy)return;archiveBusy=true;
+ try{await syncArchive(env);console.log('OUCU archive sync completed')}catch(e){console.error('OUCU archive sync failed:',e.message)}finally{archiveBusy=false}
+}
+if(env.ARCHIVE){setTimeout(collectArchive,10000).unref();setInterval(collectArchive,300000).unref()}
 function signed(value){const body=Buffer.from(JSON.stringify(value)).toString('base64url');return body+'.'+createHmac('sha256',process.env.APP_SECRET).update(body).digest('base64url')}
 function verified(value){try{const [body,signature,...extra]=value.split('.');if(extra.length||!signature)return null;const expected=createHmac('sha256',process.env.APP_SECRET).update(body).digest();const got=Buffer.from(signature,'base64url');if(got.length!==expected.length||!timingSafeEqual(got,expected))return null;const result=JSON.parse(Buffer.from(body,'base64url'));return result.exp>Date.now()?result:null}catch{return null}}
 function cookies(req){return Object.fromEntries((req.headers.cookie||'').split(';').map(x=>x.trim().split(/=(.*)/s)).filter(x=>x.length>=2).map(x=>[x[0],x[1]]))}

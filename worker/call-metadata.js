@@ -68,3 +68,34 @@ export async function queueRemainderCalls(env,getToken){
  const value={from:new Date(from).toISOString(),updatedAt:new Date(to).toISOString(),calls:[...calls.values()].map(describeCall).sort((a,b)=>b.createdTime-a.createdTime)};remainderCache={time:Date.now(),value};return value;
  })();try{return await remainderPending}finally{remainderPending=null}
 }
+
+const allCache=new Map(),allPending=new Map();
+export function searchCalls(calls,term){
+ const q=String(term||'').trim().toLowerCase(),digits=q.replace(/\D/g,'');
+ if(!q)return calls;
+ return calls.filter(t=>{
+  const fields=[t.id,t.origin,t.destination,t.status,t.terminationType,t.terminationReason,t.lastQueue?.name,t.lastEntryPoint?.name,t.ivrScriptName,t.flowActivityName,...(t.activities?.nodes||[]).flatMap(n=>[n.activityName,n.activityType,n.eventName])];
+  return fields.some(v=>String(v||'').toLowerCase().includes(q))||(digits.length>=4&&/^[+\d\s().-]+$/.test(q)&&[t.origin,t.destination].some(v=>String(v||'').replace(/\D/g,'').includes(digits)));
+ });
+}
+export async function allCalls(env,getToken,date=null){
+ const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York'}).format(new Date());
+ date=date||today;
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(date+'T12:00:00Z'))||new Date(date+'T12:00:00Z').toISOString().slice(0,10)!==date||date>today)throw Error('Choose a valid date no later than today.');
+ if(allCache.has(date)&&Date.now()-allCache.get(date).time<60000)return allCache.get(date).value;
+ if(allPending.has(date))return allPending.get(date);
+ const work=(async()=>{
+  const token=await getToken();if(!token)throw Error('Connect Webex first.');
+  const from=easternStart(Date.parse(date+'T12:00:00Z')),to=Math.min(Date.now(),easternStart(from+36*3600000)-1),calls=new Map(),seen=new Set();let cursor='NA',finished=false;
+  for(let p=0;p<1000;p++){
+   const r=await query(env,token,from,to,cursor);
+   for(const t of r.tasks)if(t.createdTime>=from&&t.createdTime<=to&&String(t.channelType).toLowerCase()==='telephony')calls.set(t.id,t);
+   if(r.pageInfo?.hasNextPage===false){finished=true;break}
+   const next=r.pageInfo?.endCursor;if(!next||seen.has(next))throw Error('Call pagination is incomplete.');seen.add(next);cursor=next;
+  }
+  if(!finished)throw Error('Call pagination limit exceeded.');
+  for(const t of calls.values()){const seenActivities=new Set();for(let p=0;t.activities?.pageInfo?.hasNextPage&&p<100;p++){const next=t.activities.pageInfo.endCursor;if(!next||seenActivities.has(next))break;seenActivities.add(next);const r=await query(env,token,from,to,'NA',t.id,next),more=r.tasks.find(x=>x.id===t.id)?.activities;if(!more)break;t.activities={...more,nodes:[...t.activities.nodes,...more.nodes]}}}
+  const value={date,from:new Date(from).toISOString(),updatedAt:new Date().toISOString(),calls:[...calls.values()].map(describeCall).sort((a,b)=>b.createdTime-a.createdTime)};
+  if(allCache.size>=3)allCache.delete(allCache.keys().next().value);allCache.set(date,{time:Date.now(),value});return value;
+ })();allPending.set(date,work);try{return await work}finally{allPending.delete(date)}
+}

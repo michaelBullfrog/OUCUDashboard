@@ -33,6 +33,9 @@ export function estimateFcr(tasks, now, from, queueId=null){
 export function summarize(tasks, now, start, fcrFrom=easternStart(start-1)) {
  const voice=tasks.filter(t=>Number.isFinite(t.createdTime)&&t.createdTime>=start&&t.createdTime<=now&&String(t.channelType).toLowerCase()==='telephony'&&String(t.direction).toLowerCase()==='inbound');
  const groups=new Map();
+ const unassigned=voice.filter(t=>!t.lastQueue?.id),terminationCounts={};
+ for(const t of unassigned){const reason=String(t.terminationType||'Not reported');terminationCounts[reason]=(terminationCounts[reason]||0)+1}
+ const queueDiagnostics={total:unassigned.length,neverQueued:unassigned.filter(t=>t.queueCount===0).length,missingQueueMetadata:unassigned.filter(t=>Number.isFinite(t.queueCount)&&t.queueCount>0).length,unknownQueueCount:unassigned.filter(t=>!Number.isFinite(t.queueCount)).length,active:unassigned.filter(t=>t.isActive===true).length,handled:unassigned.filter(t=>t.isContactHandled===true).length,terminationCounts};
  function metrics(rows){const completed=rows.filter(t=>t.isActive===false),handled=completed.filter(t=>t.isContactHandled===true),abandoned=completed.filter(t=>String(t.contactHandleType).toLowerCase()==='abandoned');
  const queued=completed.filter(t=>t.lastQueue?.id),answeredQueued=queued.filter(t=>t.isContactHandled===true);
  const within15=answeredQueued.filter(t=>Number.isFinite(t.queueDuration)&&t.queueDuration<=15000&&t.queueDuration>=0).length;
@@ -43,7 +46,7 @@ export function summarize(tasks, now, start, fcrFrom=easternStart(start-1)) {
  for(const t of tasks.filter(t=>voice.includes(t)||(t.createdTime>=fcrFrom&&t.createdTime<start&&t.isContactHandled===true&&String(t.channelType).toLowerCase()==='telephony'&&String(t.direction).toLowerCase()==='inbound'))){const id=t.lastQueue?.id||'unassigned';if(!groups.has(id))groups.set(id,{id,name:t.lastQueue?.name||'No reported queue',tasks:[]});if(voice.includes(t))groups.get(id).tasks.push(t)}
  const hourly=Array.from({length:24},(_,hour)=>({hour,offered:0,handled:0,abandoned:0}));
  for(const t of voice){const hour=Number(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',hourCycle:'h23'}).format(new Date(t.createdTime)));if(!hourly[hour])continue;hourly[hour].offered++;if(t.isActive===false&&t.isContactHandled===true)hourly[hour].handled++;if(t.isActive===false&&String(t.contactHandleType).toLowerCase()==='abandoned')hourly[hour].abandoned++;}
- return {updatedAt:new Date(now).toISOString(),from:new Date(start).toISOString(),mode:'reporting',...metrics(voice),fcr:estimateFcr(tasks,now,fcrFrom),queues:[...groups.values()].map(g=>({id:g.id,name:g.name,...metrics(g.tasks),fcr:estimateFcr(tasks,now,fcrFrom,g.id)})),hourly,recordCount:tasks.length};
+ return {updatedAt:new Date(now).toISOString(),from:new Date(start).toISOString(),mode:'reporting',queueDiagnostics,...metrics(voice),fcr:estimateFcr(tasks,now,fcrFrom),queues:[...groups.values()].map(g=>({id:g.id,name:g.name,...metrics(g.tasks),fcr:estimateFcr(tasks,now,fcrFrom,g.id)})),hourly,recordCount:tasks.length};
 }
 export async function dashboardData(env,getToken){
  if(cached&&Date.now()-cached.time<60000)return cached.value;
@@ -51,7 +54,7 @@ export async function dashboardData(env,getToken){
  if(pending)return pending;
  pending=(async()=>{const token=await getToken();if(!token)throw new Error('An administrator must connect Webex reporting first.');const now=Date.now(),start=easternStart(now),fcrFrom=easternStart(start-1),tasks=new Map(),seen=new Set();let cursor='NA';
  for(let page=0;page<1000;page++){
- const query='query($from: Long!, $to: Long!) { taskDetails(from: $from, to: $to, pagination: {cursor: '+JSON.stringify(cursor)+'}) { tasks { id channelType direction createdTime endedTime origin lastWrapUpCodeId isActive isContactHandled contactHandleType connectedDuration holdDuration wrapupDuration queueDuration lastQueue { id name } } pageInfo { hasNextPage endCursor } } }';
+ const query='query($from: Long!, $to: Long!) { taskDetails(from: $from, to: $to, pagination: {cursor: '+JSON.stringify(cursor)+'}) { tasks { id channelType direction createdTime endedTime origin lastWrapUpCodeId isActive isContactHandled contactHandleType queueCount terminationType connectedDuration holdDuration wrapupDuration queueDuration lastQueue { id name } } pageInfo { hasNextPage endCursor } } }';
  const r=await fetch(`${env.WEBEX_API_BASE}/search?orgId=${encodeURIComponent(env.WEBEX_ORG_ID)}`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({query,variables:{from:fcrFrom,to:now}}),signal:AbortSignal.timeout(20000)});
  if(r.status===429){const wait=Number(r.headers.get('Retry-After'));retryAt=Date.now()+Math.max(60,Number.isFinite(wait)?wait:60)*1000;throw new Error('Webex reporting is rate limited. Please retry shortly.');}
  if(!r.ok)throw new Error(`Webex reporting returned HTTP ${r.status}. An administrator can check the connection.`);

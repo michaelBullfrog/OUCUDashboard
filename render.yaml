@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: oucu-contact-center
+    runtime: node
+    plan: starter
+    buildCommand: npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    disk:
+      name: oucu-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: DATA_DIR
+        value: /var/data
+      - key: APP_ORIGIN
+        sync: false
+      - key: APP_SECRET
+        generateValue: true
+      - key: DASHBOARD_USER
+        value: oucu
+      - key: DASHBOARD_PASSWORD
+        sync: false
+      - key: WEBEX_CLIENT_ID
+        value: C982b913a8752b4dba22b10cb2e8866589ecf0e1c03b82fd0aab70cf91e19787a
+      - key: WEBEX_ORG_ID
+        value: 1e2592c2-b4f8-47cf-ac33-039d235962e4
+      - key: WEBEX_CLIENT_SECRET
+        sync: false
+      - key: WEBEX_API_BASE
+        value: https://api.wxcc-us1.cisco.com

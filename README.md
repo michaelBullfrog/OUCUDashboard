@@ -38,3 +38,9 @@ The administrative reporting tokens are AES-GCM encrypted on the persistent disk
 Actual FCR must use OUCU's agreed resolution measure (wrap-up outcomes or repeat-contact logic). The displayed sample FCR must not be treated as a real measured result.
 
 /health exposes only service status. All metrics, settings and reporting checks require sign-in. No secrets should be committed to GitHub. Existing credentials in the earlier hosted preview are not migrated; authorize reporting again on Render.
+
+## Separate administrator access
+
+Set ADMIN_ACCESS_PASSWORD in Render Environment to a unique password of at least 16 characters. Do not commit it to GitHub. Open https://YOUR-SERVICE.onrender.com/admin and enter that password. This signs in the trusted administrator directly, without requiring an OUCU Webex identity, and permits managing the reporting connection. Admin sessions last one hour.
+
+Admin access is disabled when ADMIN_ACCESS_PASSWORD is missing or shorter than 16 characters. Webex remains the regular user sign-in and still restricts users to OUCU. The admin page is separate from the user login. Login requires same-origin CSRF validation and rate-limits incorrect passwords to five attempts per 15-minute window; limits reset when the process restarts and may be shared by clients behind Render's proxy. Removing the admin password disables new admin logins; existing sessions last until expiry or APP_SECRET rotation.

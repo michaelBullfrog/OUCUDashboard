@@ -15,12 +15,27 @@ function cookies(req){return Object.fromEntries((req.headers.cookie||'').split('
 function orgUUID(id){if(id===process.env.WEBEX_ORG_ID)return id;try{const decoded=Buffer.from(id,'base64').toString();return decoded.startsWith('ciscospark://')&&decoded.includes('/ORGANIZATION/')?decoded.split('/').at(-1):null}catch{return null}}
 function send(res,status,body,headers={}){res.writeHead(status,{'Cache-Control':'no-store','Referrer-Policy':'no-referrer',...headers});res.end(body)}
 function cookieValue(name,value,age){return `${name}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${age}`}
+const adminAttempts=new Map();
+function adminEnabled(){return typeof env.ADMIN_ACCESS_PASSWORD==='string'&&env.ADMIN_ACCESS_PASSWORD.length>=16}
+function adminPage(csrf,error=''){return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OUCU | Admin access</title></head><body style="margin:0;background:#f2f7f8;font:16px/1.5 Segoe UI,Arial;color:#16383d"><main style="max-width:440px;margin:10vh auto;padding:36px;background:white;border:1px solid #deeaec;border-radius:12px"><img src="/logo.png" alt="OUCU Financial" style="width:180px"><h1>Administrator access</h1><p>Sign in with the administrator password configured in Render.</p><p style="color:#a13727">${error}</p><form method="post" action="/admin/login"><input type="hidden" name="csrf" value="${csrf}"><label for="password">Admin password</label><input id="password" name="password" type="password" required autocomplete="current-password" maxlength="512" style="box-sizing:border-box;width:100%;padding:12px;margin:8px 0 18px;font:inherit;border:1px solid #b6cdd1;border-radius:6px"><button style="background:#0b8295;color:white;border:0;border-radius:6px;padding:12px 18px;font:inherit;cursor:pointer">Sign in as administrator</button></form><p><a href="/login" style="color:#0b8295">Sign in with Webex</a></p></main></body></html>`}
 function loginPage(){return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OUCU | Sign in</title></head><body style="margin:0;background:#f2f7f8;font:16px/1.5 Segoe UI,Arial;color:#16383d"><main style="max-width:440px;margin:12vh auto;padding:40px;background:white;border:1px solid #deeaec;border-radius:12px;text-align:center"><img src="/logo.png" alt="OUCU Financial" style="width:210px"><h1>Contact Center</h1><p>Sign in with your OUCU Webex account.</p><a href="/auth/webex/start" style="display:block;padding:13px;background:#0b8295;color:white;text-decoration:none;border-radius:6px;margin-top:24px">Sign in with Webex</a><p style="font-size:13px;color:#60777b">Access is restricted to OUCU organization members.</p></main></body></html>`}
 const server=http.createServer(async(req,res)=>{try{
  if(req.url==='/health'){res.writeHead(200,{'Content-Type':'application/json'});res.end('{"status":"ok"}');return}
  const url=new URL(req.url,origin),pathName=url.pathname;
  if(pathName==='/logo.png'){const response=await worker.fetch(new Request(url),env);send(res,response.status,Buffer.from(await response.arrayBuffer()),{'Content-Type':'image/png'});return}
  if(pathName==='/login'){send(res,200,loginPage(),{'Content-Type':'text/html;charset=utf-8'});return}
+ if(pathName==='/admin'&&req.method==='GET'){
+  if(!adminEnabled()){send(res,503,'Admin access is disabled. Set ADMIN_ACCESS_PASSWORD in Render to a password of at least 16 characters.');return}
+  const state=signed({nonce:randomBytes(32).toString('hex'),exp:Date.now()+600000});send(res,200,adminPage(state),{'Content-Type':'text/html;charset=utf-8','Set-Cookie':cookieValue('oucu_admin_state',state,600)});return
+ }
+ if(pathName==='/admin/login'&&req.method==='POST'){
+  if(!adminEnabled()){send(res,503,'Admin access is disabled.');return}
+  if(req.headers.origin!==origin){send(res,403,'Invalid request origin.');return}
+  const client=req.socket.remoteAddress||'unknown';const now=Date.now();for(const [k,v]of adminAttempts)if(v.until<now)adminAttempts.delete(k);const attempt=adminAttempts.get(client)||{count:0,until:now+900000};if(attempt.count>=5){send(res,429,'Too many admin login attempts. Try again in 15 minutes.',{'Retry-After':String(Math.ceil((attempt.until-now)/1000))});return}
+  const parts=[];let size=0;for await(const part of req){size+=part.length;if(size>2048){send(res,413,'Request too large.');return}parts.push(part)}const form=new URLSearchParams(Buffer.concat(parts).toString());const csrf=form.get('csrf');if(!csrf||csrf!==cookies(req).oucu_admin_state||!verified(csrf)){send(res,403,'Login expired or invalid. Return to /admin and try again.');return}
+  const received=createHash('sha256').update(form.get('password')||'').digest();const expected=createHash('sha256').update(env.ADMIN_ACCESS_PASSWORD).digest();if(!timingSafeEqual(received,expected)){attempt.count++;adminAttempts.set(client,attempt);send(res,401,adminPage(csrf,'Incorrect admin password.'),{'Content-Type':'text/html;charset=utf-8'});return}
+  adminAttempts.delete(client);const session=signed({id:'local-administrator',email:'local-administrator',admin:true,orgId:env.WEBEX_ORG_ID,exp:now+3600000});send(res,303,'',{Location:'/','Set-Cookie':[cookieValue('oucu_session',session,3600),cookieValue('oucu_admin_state','',0)]});return
+ }
  if(pathName==='/auth/webex/start'){
   const nonce=randomBytes(32).toString('hex');const state=signed({nonce,exp:Date.now()+600000});const dest=new URL('https://webexapis.com/v1/authorize');dest.search=new URLSearchParams({client_id:env.WEBEX_CLIENT_ID,response_type:'code',redirect_uri:origin+'/auth/webex/callback',scope:'spark:people_read',state}).toString();send(res,303,'',{Location:dest.toString(),'Set-Cookie':cookieValue('oucu_login_state',state,600)});return
  }
@@ -36,7 +51,7 @@ const server=http.createServer(async(req,res)=>{try{
  }
  const session=verified(cookies(req).oucu_session||'');if(!session||session.orgId!==env.WEBEX_ORG_ID){send(res,303,'',{Location:'/login'});return}
  if(pathName==='/logout'&&req.method==='POST'){if(req.headers.origin!==origin){send(res,403,'Invalid origin');return}send(res,303,'',{Location:'/login','Set-Cookie':cookieValue('oucu_session','',0)});return}
- const admins=(env.WEBEX_ADMIN_EMAILS||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);const isAdmin=admins.includes(session.email.toLowerCase());
+ const admins=(env.WEBEX_ADMIN_EMAILS||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);const isAdmin=session.admin===true||admins.includes(session.email.toLowerCase());
  if(pathName==='/api/session'){send(res,200,JSON.stringify({email:session.email,isAdmin}),{'Content-Type':'application/json'});return}
  if(pathName.startsWith('/settings/')||pathName.startsWith('/oauth/')||pathName==='/api/webex/check'){if(!isAdmin){send(res,403,'Only a configured dashboard administrator can manage reporting authorization. Set WEBEX_ADMIN_EMAILS in Render.');return}}
  const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>16384){res.writeHead(413);res.end('Request too large');return}chunks.push(chunk)}

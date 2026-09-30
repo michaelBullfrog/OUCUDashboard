@@ -24,3 +24,16 @@ export async function unqueuedCalls(env,getToken){
  const value={from:new Date(from).toISOString(),updatedAt:new Date(to).toISOString(),calls:[...calls.values()].map(describeCall).sort((a,b)=>b.createdTime-a.createdTime)};cache={time:Date.now(),value};return value;
  })();try{return await pending}finally{pending=null}
 }
+
+export function transferNodeCounts(data){
+ const counts=new Map();let total=0,unidentified=0;
+ for(const t of data.calls){
+  if(String(t.terminationType).toLowerCase()!=='transfertodn')continue;
+  total++;
+  const transfers=(t.activities?.nodes||[]).filter(n=>String(n.activityType||'').toLowerCase().replace(/[^a-z]/g,'')==='blindtransfer').sort((a,b)=>(a.createdTime||0)-(b.createdTime||0));
+  const name=t.activityHistoryComplete?(transfers.at(-1)?.activityName||t.flowActivityName):null;
+  if(!name||!String(name).trim()){unidentified++;continue}
+  const node=String(name).trim();counts.set(node,(counts.get(node)||0)+1);
+ }
+ return {updatedAt:data.updatedAt,total,unidentified,nodes:[...counts].map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name))};
+}

@@ -7,8 +7,8 @@ function subtract(intervals,exclude){let result=merged(intervals);for(const [a,b
 export function dailyAgents(sessions,now){
  const from=easternStart(now),agents=new Map();
  for(const s of sessions){
-  if(!agents.has(s.agentId))agents.set(s.agentId,{id:s.agentId,name:s.agentName||'Agent',team:s.teamName||'',calls:[],idle:new Map(),complete:true,seenToday:false,sessionStart:-Infinity});
-  const a=agents.get(s.agentId);if(s.startTime>a.sessionStart){a.name=s.agentName||a.name;a.team=s.teamName||a.team;a.sessionStart=s.startTime}
+  if(!agents.has(s.agentId))agents.set(s.agentId,{id:s.agentId,name:s.agentName||'Agent',team:s.teamName||'',userLoginId:s.userLoginId||null,calls:[],idle:new Map(),complete:true,seenToday:false,sessionStart:-Infinity});
+  const a=agents.get(s.agentId);if(s.startTime>a.sessionStart){a.name=s.agentName||a.name;a.team=s.teamName||a.team;a.userLoginId=s.userLoginId||a.userLoginId;a.sessionStart=s.startTime}
   for(const c of s.channelInfo||[]){if(norm(c.channelType)!=='telephony')continue;
    if(c.activities?.pageInfo?.hasNextPage!==false)a.complete=false;
    for(const n of c.activities?.nodes||[]){
@@ -23,7 +23,7 @@ export function dailyAgents(sessions,now){
    }
   }
  }
- return {updatedAt:new Date(now).toISOString(),from:new Date(from).toISOString(),agents:[...agents.values()].filter(a=>a.seenToday||!a.complete).map(a=>({id:a.id,name:a.name,team:a.team,complete:a.complete,callTime:a.complete?total(a.calls):null,idleTime:a.complete?total([...a.idle.values()].flatMap(x=>subtract(x,a.calls))):null,idleCodes:a.complete?[...a.idle].map(([code,r])=>({code,duration:total(subtract(r,a.calls))})):[]})).sort((a,b)=>a.name.localeCompare(b.name))};
+ return {updatedAt:new Date(now).toISOString(),from:new Date(from).toISOString(),agents:[...agents.values()].filter(a=>a.seenToday||!a.complete).map(a=>({id:a.id,name:a.name,team:a.team,userLoginId:a.userLoginId,complete:a.complete,callTime:a.complete?total(a.calls):null,idleTime:a.complete?total([...a.idle.values()].flatMap(x=>subtract(x,a.calls))):null,idleCodes:a.complete?[...a.idle].map(([code,r])=>({code,duration:total(subtract(r,a.calls))})):[]})).sort((a,b)=>a.name.localeCompare(b.name))};
 }
 let cache,pending,retryAt=0;
 export async function dailyAgentData(env,getToken){
@@ -32,7 +32,7 @@ export async function dailyAgentData(env,getToken){
  pending=(async()=>{
  const token=await getToken();if(!token)throw Error('Connect Webex first');const now=Date.now(),from=easternStart(now-7*86400000);
  async function query(cursor,session=null,after=null){
-  const fields='agentId agentName agentSessionId startTime isActive teamName channelInfo { channelId channelType activities(first:100'+(after?',after:'+JSON.stringify(after):'')+') { nodes { id state startTime endTime isCurrentActivity idleCode { id name } } pageInfo { hasNextPage endCursor } } }';
+  const fields='agentId agentName userLoginId agentSessionId startTime isActive teamName channelInfo { channelId channelType activities(first:100'+(after?',after:'+JSON.stringify(after):'')+') { nodes { id state startTime endTime isCurrentActivity idleCode { id name } } pageInfo { hasNextPage endCursor } } }';
   const q='query($from:Long!,$to:Long!) { agentSession(from:$from,to:$to,'+(session?'filter:{agentSessionId:{equals:'+JSON.stringify(session)+'}},':'')+'pagination:{cursor:'+JSON.stringify(cursor)+'}) { agentSessions { '+fields+' } pageInfo { hasNextPage endCursor } } }';
   const r=await fetch(env.WEBEX_API_BASE+'/search?orgId='+encodeURIComponent(env.WEBEX_ORG_ID),{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query:q,variables:{from,to:now}}),signal:AbortSignal.timeout(20000)});
   if(r.status===429){retryAt=Date.now()+60000;throw Error('Agent history is rate limited')}

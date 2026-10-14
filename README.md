@@ -80,3 +80,8 @@ Set these Render environment variables to comma-separated exact Webex sign-in em
 A user can appear in more than one list. Lists are case-insensitive; wildcards are not accepted. Unassigned org members receive no report access. WEBEX_ADMIN_EMAILS and the backup local administrator retain access to all reports. Empty lists grant no ordinary users access; set the user lists before handing the links to staff.
 
 The root URL lists only assigned reports and redirects users with one assignment directly to their report. Sign-in still verifies OUCU organization membership. Report-scoped API routes enforce the same permissions; legacy aggregate/operational API routes are admin-only. Senior responses omit operational details; Manager cannot request current callers or agent-history APIs.
+
+
+## Personal agent statistics
+The Agent Dashboard has separate side-by-side My Agent Statistics and Team Statistics panels (stacked on narrow screens). Its agent-history API filters individual data using the verified Webex session email and the Search API agentSession userLoginId. User-supplied query parameters, display names and report selectors do not choose an agent. Filtering occurs after the shared reporting cache is read, without changing that cache.
+Only one exact case-insensitive login match is accepted. Unmatched or ambiguous identities receive no individual records. Backup password administration has no agent identity and must use Webex sign-in to see personal statistics. Team daily totals are aggregated server-side before individual filtering; teammate names, login IDs and individual idle-code totals are not included in that personal-history response. Current team status remains available in the separate team status panel.

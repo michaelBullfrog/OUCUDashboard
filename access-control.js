@@ -17,7 +17,8 @@ export function reportRoute(path){
 export function endpointAllowed(report,endpoint){
  return ({senior:['dashboard','insights'],manager:['dashboard','insights','transfer-nodes'],agent:['dashboard','insights','transfer-nodes','agents','waiting','agent-history']})[report]?.includes(endpoint)===true;
 }
-export function sanitizeReport(report,endpoint,data){
+export function sanitizeReport(report,endpoint,data,session={}){
+ if(report==='agent'&&endpoint==='agent-history')return personalAgentReport(data,session);
  if(report==='senior'&&endpoint==='dashboard'){
   const {offered,abandoned,abandonRate,queueTime,from,updatedAt,recordCount,historical,archivedOnly,insights}=data;
   return {offered,abandoned,abandonRate,queueTime,from,updatedAt,recordCount,historical,archivedOnly,queues:[],hourly:[],...(insights?{insights:sanitizeReport(report,'insights',insights)}:{})};
@@ -32,3 +33,15 @@ export function sanitizeReport(report,endpoint,data){
  return data;
 }
 export function reportLabel(report){return names[report]}
+
+export function personalAgentReport(data,session){
+ const email=String(session.email||'').trim().toLowerCase();
+ const all=data.agents||[],matches=all.filter(a=>email&&String(a.userLoginId||'').trim().toLowerCase()===email);
+ const teams=new Map();
+ for(const a of all){
+  const name=a.team||'Team not reported';if(!teams.has(name))teams.set(name,{name,complete:true,idleTime:0,callTime:0,agentCount:0});
+  const t=teams.get(name);t.agentCount++;t.complete=t.complete&&a.complete===true&&a.idleTime!=null&&a.callTime!=null;t.idleTime+=a.idleTime||0;t.callTime+=a.callTime||0;
+ }
+ const agents=matches.length===1?matches.map(({userLoginId,...a})=>a):[];
+ return {updatedAt:data.updatedAt,from:data.from,agents,personal:true,identityMatched:agents.length===1,personalMessage:agents.length?'':session.id==='local-administrator'?'Sign in with your Webex account to see your individual statistics. Backup admin access has no agent identity.':matches.length>1?'Multiple agent records match your login. Personal statistics are unavailable until the identity mapping is resolved.':'No agent activity record matches your Webex sign-in email for today. Personal statistics are unavailable.',teams:[...teams.values()].map(t=>({...t,idleTime:t.complete?t.idleTime:null,callTime:t.complete?t.callTime:null}))};
+}

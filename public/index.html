@@ -26,6 +26,15 @@
 .agent-clean .agent-detail>summary:hover{background:#dcecef}
 .agent-clean .agent-detail[open]>summary{border-bottom:1px solid #c1d8dc}
 @media(max-width:700px){.agent-clean #insight-cards{padding:12px;gap:12px}.agent-clean .stats-pair .panelhead,.agent-clean #waiting-panel>.panelhead{padding:15px 18px}}
+
+/* Shared OUCU panel treatment for Manager and Senior dashboards. */
+body:not(.agent-clean) #insight-cards,body:not(.agent-clean) #existing-kpis{padding:18px;background:#eaf3f4;border:1px solid #b6cfd3;border-radius:12px;box-shadow:0 3px 10px rgba(0,76,85,.05)}
+body:not(.agent-clean) #insight-cards>.kpi,body:not(.agent-clean) #existing-kpis>.kpi{border:1px solid #b6cfd3;border-top:4px solid var(--teal);border-radius:9px;background:white}
+body:not(.agent-clean) #insight-cards>.kpi:first-child,body:not(.agent-clean) #existing-kpis>.kpi:first-child{border-top-color:var(--green)}
+body:not(.agent-clean) .panel{border:1px solid #afcbd0;border-top:4px solid var(--teal);border-radius:12px;box-shadow:0 3px 10px rgba(0,76,85,.06)}
+body:not(.agent-clean) .panel>.panelhead{padding:17px 22px;background:#eaf3f4;border-bottom:1px solid #c1d8dc}
+body:not(.agent-clean) .panel h2{color:var(--deep)}
+@media(max-width:700px){body:not(.agent-clean) #insight-cards,body:not(.agent-clean) #existing-kpis{padding:12px;gap:12px}body:not(.agent-clean) .panel>.panelhead{padding:15px 18px}}
 </style></head><body>
 <header><div class="brand"><img class="logo" src="/logo.png" alt="OUCU Financial"><div class="brandtext"><strong>Contact Center</strong><span>Supervisor workspace</span></div></div><div class="headright"><a id="call-metadata-link" href="/settings/calls" hidden style="color:var(--teal)">Call metadata</a><a id="metric-help-link" href="#manager-metric-help" hidden style="color:var(--teal)">Metric help</a><form method="post" action="/logout"><button>Sign out</button></form><span class="sample" id="connection">Loading reporting</span><div class="clock" id="clock">—</div></div></header>
 <main><section class="intro"><div><div class="eyebrow">MEMBER EXPERIENCE</div><h1 id="period-title">Today at a glance</h1><p id="period-note">Inbound voice contacts · Since midnight Eastern</p></div><div class="controls"><div class="date-controls"><label><input type="checkbox" id="today-toggle" checked> Today only · Live queue/status</label><label for="report-from">From</label><input type="date" id="report-from" disabled><label for="report-to">To</label><input type="date" id="report-to" disabled><button id="apply-dates" disabled>Apply dates</button></div><div class="queue-controls"><label for="queue">Queue</label><select id="queue"><option value="all">All queues</option></select><button id="refresh">Refresh</button></div></div><span id="date-error" class="date-help" role="status">Eastern time · Up to 31 days</span></section>

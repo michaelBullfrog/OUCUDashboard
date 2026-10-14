@@ -91,3 +91,8 @@ Only one exact case-insensitive login match is accepted. Unmatched or ambiguous 
 Today-only mode polls current queued contacts and team status every 15 seconds, using matching shared server cache windows and request coalescing. Webex 429 responses impose a Retry-After backoff of at least 60 seconds. KPIs and daily personal/team duration totals retain 60-second polling.
 Each queued caller's wait timer advances every second using the reported queue wait plus server-measured report age and monotonic browser elapsed time. Contact/IVR creation time is never substituted for a missing queue-entry timestamp. Timers pause after report age exceeds 60 seconds; failed reporting clears current counts and timers. Current longest wait advances with these timers. Historical mode hides the live queue/status boxes and stops those requests.
 This is polling with local timer interpolation, not a streaming Webex event feed.
+
+
+## OUCU Agent Details in Manager Dashboard
+The Manager report embeds Cisco Analyzer visualization 43782 for the OUCU org above the heat map. The iframe is initialized only on the authorized /reports/manager route. Cisco authentication and Analyzer report permissions remain enforced by Cisco; no dashboard tokens or admin credentials are forwarded to the iframe.
+The report uses its own Analyzer date/filter controls; the dashboard From/To controls do not change it. Open in Analyzer and Reload report controls support signing in outside the frame. Frame loading depends on Cisco's browser/security policies and the user's Analyzer session.

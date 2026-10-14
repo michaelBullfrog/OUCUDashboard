@@ -17,6 +17,12 @@ services:
         value: /var/data
       - key: APP_SECRET
         generateValue: true
+      - key: SENIOR_DASHBOARD_EMAILS
+        sync: false
+      - key: MANAGER_DASHBOARD_EMAILS
+        sync: false
+      - key: AGENT_DASHBOARD_EMAILS
+        sync: false
       - key: WEBEX_ADMIN_EMAILS
         sync: false
       - key: WEBEX_CLIENT_ID

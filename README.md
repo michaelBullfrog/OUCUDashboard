@@ -64,3 +64,19 @@ Admin access is disabled when ADMIN_ACCESS_PASSWORD is missing or shorter than 1
 - Agent daily call time: union of connected, hold, consultation, conference and equivalent outbound voice intervals, clipped at Eastern midnight. Wrap-up and ringing are excluded. Overlapping activities count once.
 - Agent history requests paginate sessions and inner activities. Incomplete or invalid history yields Unavailable, not a partial total. Session discovery uses a seven-day lookback; sessions outside this reporting window are not reconstructed.
 - Reported state and daily activity refresh every 60 seconds and may lag Webex. Historical date mode hides current state and daily agent totals. There is no streaming/websocket feed.
+
+
+## Separate report access
+Report URLs:
+- /reports/senior — Senior Management
+- /reports/manager — Manager
+- /reports/agent — Call Center Agents
+
+Set these Render environment variables to comma-separated exact Webex sign-in email addresses:
+- SENIOR_DASHBOARD_EMAILS
+- MANAGER_DASHBOARD_EMAILS
+- AGENT_DASHBOARD_EMAILS
+
+A user can appear in more than one list. Lists are case-insensitive; wildcards are not accepted. Unassigned org members receive no report access. WEBEX_ADMIN_EMAILS and the backup local administrator retain access to all reports. Empty lists grant no ordinary users access; set the user lists before handing the links to staff.
+
+The root URL lists only assigned reports and redirects users with one assignment directly to their report. Sign-in still verifies OUCU organization membership. Report-scoped API routes enforce the same permissions; legacy aggregate/operational API routes are admin-only. Senior responses omit operational details; Manager cannot request current callers or agent-history APIs.

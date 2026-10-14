@@ -1,3 +1,4 @@
+import { REPORTS, reportAccess, reportRoute, endpointAllowed, sanitizeReport, reportLabel } from './access-control.js';
 import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -73,11 +74,24 @@ const server=http.createServer(async(req,res)=>{try{
  }
  const session=verified(cookies(req).oucu_session||'');if(!session||session.orgId!==env.WEBEX_ORG_ID){send(res,303,'',{Location:'/login'});return}
  if(pathName==='/logout'&&req.method==='POST'){if(!trustedOrigin(req.headers.origin)){send(res,403,'Invalid origin');return}send(res,303,'',{Location:'/login','Set-Cookie':cookieValue('oucu_session','',0)});return}
- const admins=(env.WEBEX_ADMIN_EMAILS||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);const isAdmin=session.admin===true||admins.includes(session.email.toLowerCase());
- if(pathName==='/api/session'){send(res,200,JSON.stringify({email:session.email,isAdmin}),{'Content-Type':'application/json'});return}
+ const {isAdmin,reports}=reportAccess(session,env);
+ if(pathName==='/api/session'){send(res,200,JSON.stringify({email:session.email,isAdmin,reports}),{'Content-Type':'application/json'});return}
  if(pathName.startsWith('/settings/')||pathName.startsWith('/oauth/')||pathName==='/api/webex/check'){if(!isAdmin){send(res,403,'Only a configured dashboard administrator can manage reporting authorization. Set WEBEX_ADMIN_EMAILS in Render.');return}}
+ const route=reportRoute(pathName);
+ if(pathName==='/'){
+  if(!reports.length){send(res,403,'No dashboard reports are assigned to this account. Ask an administrator to grant report access.');return}
+  if(reports.length===1){send(res,303,'',{Location:'/reports/'+reports[0]});return}
+  const links=reports.map(r=>'<p><a href="/reports/'+r+'" style="display:block;padding:14px;background:#0b8295;color:white;border-radius:6px;text-decoration:none">'+reportLabel(r)+'</a></p>').join('');
+  send(res,200,'<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>OUCU | Reports</title></head><body style="background:#f2f7f8;font:16px/1.5 Segoe UI,Arial;color:#16383d"><main style="max-width:520px;margin:10vh auto;padding:32px;background:white;border-radius:12px"><img src="/logo.png" style="width:180px" alt="OUCU"><h1>Your dashboards</h1>'+links+'<form method="post" action="/logout"><button>Sign out</button></form></main></body></html>',{'Content-Type':'text/html;charset=utf-8'});return
+ }
+ if(route){
+  if(!reports.includes(route.report)||(!route.page&&!endpointAllowed(route.report,route.endpoint))){send(res,403,JSON.stringify({error:'You do not have access to this report.'}),{'Content-Type':'application/json'});return}
+ }else if(pathName.startsWith('/reports/')||pathName.startsWith('/api/reports/')){send(res,404,'Report not found');return}
+ const legacy=new Set(['/api/dashboard','/api/insights','/api/transfer-nodes','/api/node-outcomes','/api/agents','/api/waiting','/api/agent-history']);
+ if(!route&&legacy.has(pathName)&&!isAdmin){send(res,403,JSON.stringify({error:'Use the API for your assigned report.'}),{'Content-Type':'application/json'});return}
  const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>16384){res.writeHead(413);res.end('Request too large');return}chunks.push(chunk)}
  const headers=new Headers();for(const [k,v]of Object.entries(req.headers)){if(v&&!['host','authorization','oai-authenticated-user-id','oai-authenticated-user-email','content-length'].includes(k.toLowerCase()))headers.set(k,Array.isArray(v)?v.join(','):v)}headers.set('oai-authenticated-user-email',isAdmin?env.OWNER_EMAIL:'oucu-viewer');if(trustedOrigin(headers.get('origin')))headers.set('origin',origin);
- const request=new Request(new URL(req.url,origin),{method:req.method,headers,...(['GET','HEAD'].includes(req.method)?{}:{body:Buffer.concat(chunks)})});const response=await worker.fetch(request,env);const out=Object.fromEntries(response.headers);if(response.headers.getSetCookie().length)out['set-cookie']=response.headers.getSetCookie();out['X-Content-Type-Options']='nosniff';out['Referrer-Policy']='same-origin';res.writeHead(response.status,out);res.end(Buffer.from(await response.arrayBuffer()));
+ const workerURL=new URL(req.url,origin);if(route)workerURL.pathname=route.page?'/':'/api/'+route.endpoint;
+ const request=new Request(workerURL,{method:req.method,headers,...(['GET','HEAD'].includes(req.method)?{}:{body:Buffer.concat(chunks)})});let response=await worker.fetch(request,env);if(route&&!route.page&&response.ok){const data=sanitizeReport(route.report,route.endpoint,await response.json());response=new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json','Cache-Control':'no-store'}})}const out=Object.fromEntries(response.headers);if(response.headers.getSetCookie().length)out['set-cookie']=response.headers.getSetCookie();out['X-Content-Type-Options']='nosniff';out['Referrer-Policy']='same-origin';res.writeHead(response.status,out);res.end(Buffer.from(await response.arrayBuffer()));
  }catch(e){console.error('Request failed',e.message);res.writeHead(500,{'Content-Type':'text/plain'});res.end('Service unavailable. Check the Render logs.')}});
 server.listen(Number(process.env.PORT)||10000,'0.0.0.0',()=>console.log('OUCU dashboard running'));

@@ -1,4 +1,4 @@
-import { REPORTS, reportAccess, reportRoute, endpointAllowed, sanitizeReport, reportLabel } from './access-control.js';
+import { REPORTS, canManageWebex, reportAccess, reportRoute, endpointAllowed, sanitizeReport, reportLabel } from './access-control.js';
 import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -76,13 +76,16 @@ const server=http.createServer(async(req,res)=>{try{
  if(pathName==='/logout'&&req.method==='POST'){if(!trustedOrigin(req.headers.origin)){send(res,403,'Invalid origin');return}send(res,303,'',{Location:'/login','Set-Cookie':cookieValue('oucu_session','',0)});return}
  const {isAdmin,reports}=reportAccess(session,env);
  if(pathName==='/api/session'){send(res,200,JSON.stringify({email:session.email,isAdmin,reports}),{'Content-Type':'application/json'});return}
- if(pathName.startsWith('/settings/')||pathName.startsWith('/oauth/')||pathName==='/api/webex/check'){if(!isAdmin){send(res,403,'Only a configured dashboard administrator can manage reporting authorization. Set WEBEX_ADMIN_EMAILS in Render.');return}}
+ const webexSettings=pathName.startsWith('/settings/webex')||['/oauth/webex/start','/oauth/webex/callback','/api/webex/check','/api/webex/status'].includes(pathName);
+ if(webexSettings&&!canManageWebex(session)){send(res,403,'Webex settings require the administrator password login at /admin.');return}
+ if(pathName.startsWith('/settings/')||pathName.startsWith('/oauth/')||pathName==='/api/webex/check'){if(!isAdmin){send(res,403,'Only a configured dashboard administrator can manage reporting authorization.');return}}
  const route=reportRoute(pathName);
  if(pathName==='/'){
   if(!reports.length){send(res,403,'No dashboard reports are assigned to this account. Ask an administrator to grant report access.');return}
   if(reports.length===1){send(res,303,'',{Location:'/reports/'+reports[0]});return}
+  const adminTools=canManageWebex(session)?'<p><a href="/settings/webex">Webex settings</a></p>':'';
   const links=reports.map(r=>'<p><a href="/reports/'+r+'" style="display:block;padding:14px;background:#0b8295;color:white;border-radius:6px;text-decoration:none">'+reportLabel(r)+'</a></p>').join('');
-  send(res,200,'<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>OUCU | Reports</title></head><body style="background:#f2f7f8;font:16px/1.5 Segoe UI,Arial;color:#16383d"><main style="max-width:520px;margin:10vh auto;padding:32px;background:white;border-radius:12px"><img src="/logo.png" style="width:180px" alt="OUCU"><h1>Your dashboards</h1>'+links+'<form method="post" action="/logout"><button>Sign out</button></form></main></body></html>',{'Content-Type':'text/html;charset=utf-8'});return
+  send(res,200,'<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>OUCU | Reports</title></head><body style="background:#f2f7f8;font:16px/1.5 Segoe UI,Arial;color:#16383d"><main style="max-width:520px;margin:10vh auto;padding:32px;background:white;border-radius:12px"><img src="/logo.png" style="width:180px" alt="OUCU"><h1>Your dashboards</h1>'+links+adminTools+'<form method="post" action="/logout"><button>Sign out</button></form></main></body></html>',{'Content-Type':'text/html;charset=utf-8'});return
  }
  if(route){
   if(!reports.includes(route.report)||(!route.page&&!endpointAllowed(route.report,route.endpoint))){send(res,403,JSON.stringify({error:'You do not have access to this report.'}),{'Content-Type':'application/json'});return}

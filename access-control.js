@@ -1,3 +1,4 @@
+export function canManageWebex(session){return session?.admin===true&&session?.id==='local-administrator'}
 export const REPORTS=['senior','manager','agent'];
 const names={senior:'Senior Management',manager:'Manager',agent:'Call Center Agents'};
 const keys={senior:'SENIOR_DASHBOARD_EMAILS',manager:'MANAGER_DASHBOARD_EMAILS',agent:'AGENT_DASHBOARD_EMAILS'};

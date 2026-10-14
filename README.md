@@ -94,5 +94,10 @@ This is polling with local timer interpolation, not a streaming Webex event feed
 
 
 ## OUCU Agent Details in Manager Dashboard
-The Manager report embeds Cisco Analyzer visualization 43782 for the OUCU org above the heat map. The iframe is initialized only on the authorized /reports/manager route. Cisco authentication and Analyzer report permissions remain enforced by Cisco; no dashboard tokens or admin credentials are forwarded to the iframe.
+The Manager report embeds Cisco Analyzer visualization 43782 for the OUCU org at the bottom of the Manager Dashboard. The iframe is initialized only on the authorized /reports/manager route. Cisco authentication and Analyzer report permissions remain enforced by Cisco; no dashboard tokens or admin credentials are forwarded to the iframe.
 The report uses its own Analyzer date/filter controls; the dashboard From/To controls do not change it. Open in Analyzer and Reload report controls support signing in outside the frame. Frame loading depends on Cisco's browser/security policies and the user's Analyzer session.
+
+
+## Manager agent occupancy
+Manager-only `/api/reports/manager/occupancy` queries fully paginated Webex Search agentSession records with telephony channel totals. The exact OUCU formula is `(availableDuration + connectedDuration + wrapupDuration + outdialConnectedDuration + outdialWrapupDuration) / (MAX(endTime) - MIN(startTime)) * 100`, grouped by agent across the selected Eastern date range. All five native durations and timestamps are milliseconds. Gaps between sessions remain in the denominator; percentages are not clamped.
+The table shows each component and first login / last logout. Any open session, missing duration, invalid timestamps, or session crossing the selected boundaries makes the percentage unavailable; no assumed logout or prorated total is substituted. Native session totals displayed for a crossing session are accompanied by this warning. Today mode refreshes every 60 seconds; historical dates use Apply dates or Refresh. Responses are shared for 60 seconds, concurrent requests are coalesced, and 429 responses impose backoff. Agent and Senior routes cannot access this endpoint; legacy access requires administrator authentication. Personal agent active-time calculations remain separate.

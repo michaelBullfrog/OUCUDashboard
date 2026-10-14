@@ -10,12 +10,12 @@ export function reportAccess(session,env){
 }
 export function reportRoute(path){
  const m=path.match(/^\/reports\/(senior|manager|agent)\/?$/);if(m)return {report:m[1],page:true};
- const api=path.match(/^\/api\/reports\/(senior|manager|agent)\/(dashboard|insights|transfer-nodes|agents|waiting|agent-history)$/);
+ const api=path.match(/^\/api\/reports\/(senior|manager|agent)\/(dashboard|insights|transfer-nodes|agents|waiting|agent-history|occupancy)$/);
  if(api)return {report:api[1],endpoint:api[2]};
  return null;
 }
 export function endpointAllowed(report,endpoint){
- return ({senior:['dashboard','insights'],manager:['dashboard','insights','transfer-nodes'],agent:['dashboard','insights','transfer-nodes','agents','waiting','agent-history']})[report]?.includes(endpoint)===true;
+ return ({senior:['dashboard','insights'],manager:['dashboard','insights','transfer-nodes','occupancy'],agent:['dashboard','insights','transfer-nodes','agents','waiting','agent-history']})[report]?.includes(endpoint)===true;
 }
 export function sanitizeReport(report,endpoint,data,session={}){
  if(report==='agent'&&endpoint==='agent-history')return personalAgentReport(data,session);
@@ -45,3 +45,4 @@ export function personalAgentReport(data,session){
  const agents=matches.length===1?matches.map(({userLoginId,...a})=>a):[];
  return {updatedAt:data.updatedAt,from:data.from,agents,personal:true,identityMatched:agents.length===1,personalMessage:agents.length?'':session.id==='local-administrator'?'Sign in with your Webex account to see your individual statistics. Backup admin access has no agent identity.':matches.length>1?'Multiple agent records match your login. Personal statistics are unavailable until the identity mapping is resolved.':'No agent activity record matches your Webex sign-in email for today. Personal statistics are unavailable.',teams:[...teams.values()].map(t=>({...t,idleTime:t.complete?t.idleTime:null,callTime:t.complete?t.callTime:null}))};
 }
+

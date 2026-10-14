@@ -1,4 +1,5 @@
 import { DASHBOARD, LOGO } from './assets.js';
+import { occupancyData } from './occupancy.js';
 import { dailyAgentData } from './agent-history.js';
 import { insights } from './insights.js';
 import { easternStart } from './reporting.js';
@@ -40,6 +41,7 @@ export default {async fetch(request,env){const u=new URL(request.url);try{
  if(u.pathname==='/api/transfer-nodes'&&request.method==='GET'){if(!request.headers.get('oai-authenticated-user-email'))return json({error:'Sign in required'},401);try{return json(transferNodeCounts(await unqueuedCalls(env,()=>access(env))))}catch(e){return json({error:'Transfer node counts are unavailable. An administrator can review Call metadata.'},503)}}
  if(u.pathname==='/api/node-outcomes'&&request.method==='GET'){if(!request.headers.get('oai-authenticated-user-email'))return json({error:'Sign in required'},401);try{return json(nodeOutcomeCounts(await unqueuedCalls(env,()=>access(env))))}catch(e){return json({error:'Node outcomes unavailable'},503)}}
  if(u.pathname==='/api/insights'&&request.method==='GET'){if(!request.headers.get('oai-authenticated-user-email'))return json({error:'Sign in required'},401);try{const d=await allCalls(env,()=>access(env));return json({...insights(d.calls,easternStart(),Date.now()),updatedAt:d.updatedAt})}catch(e){return json({error:e.message},503)}}
+ if(u.pathname==='/api/occupancy'&&request.method==='GET'){if(!request.headers.get('oai-authenticated-user-email'))return json({error:'Sign in required'},401);try{return json(await occupancyData(env,()=>access(env),u.searchParams.get('from'),u.searchParams.get('to')))}catch(e){return json({error:e.message},503)}}
  if(u.pathname==='/api/agent-history'&&request.method==='GET'){if(!request.headers.get('oai-authenticated-user-email'))return json({error:'Sign in required'},401);try{return json(await dailyAgentData(env,()=>access(env)))}catch(e){return json({error:e.message},503)}}
  if(u.pathname==='/api/agents'&&request.method==='GET'){if(!request.headers.get('oai-authenticated-user-email'))return json({error:'Sign in required'},401);try{return json(await agentData(env,()=>access(env)))}catch(e){console.error('Agent reporting',e.message);return json({error:e.message},503)}}
  if(u.pathname==='/api/waiting'&&request.method==='GET'){if(!request.headers.get('oai-authenticated-user-email'))return json({error:'Sign in required'},401);try{return json({...await waitingData(env,()=>access(env)),servedAt:new Date().toISOString()})}catch(e){return json({error:e.message},503)}}
@@ -81,4 +83,5 @@ export default {async fetch(request,env){const u=new URL(request.url);try{
  if(u.pathname==='/api/webex/check'&&request.method==='POST'){const token=await access(env);if(!token)return json({error:'Authorize Webex first'},409);const check=await reportingCheck(env,token);await save(env,'webex/reporting-check',check);return page(`<h1>OUCU reporting access confirmed</h1><p>Webex returned ${check.recentTaskCount} recent task records in the first response page.</p><p>The connection is working. Return to the dashboard to load today’s reporting data.</p><a class="button" href="/">Return to dashboard</a>`)}
  return json({error:'Not found'},404);
  }catch(e){console.error('Webex connection error',e.message);return page('<h1>Webex connection needs attention</h1><p class="error">'+String(e.message).replace(/[<>&"']/g,'')+'</p><a href="/settings/webex">Return to connection settings</a>')}}};
+
 

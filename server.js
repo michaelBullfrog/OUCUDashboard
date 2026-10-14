@@ -87,7 +87,7 @@ const server=http.createServer(async(req,res)=>{try{
  if(route){
   if(!reports.includes(route.report)||(!route.page&&!endpointAllowed(route.report,route.endpoint))){send(res,403,JSON.stringify({error:'You do not have access to this report.'}),{'Content-Type':'application/json'});return}
  }else if(pathName.startsWith('/reports/')||pathName.startsWith('/api/reports/')){send(res,404,'Report not found');return}
- const legacy=new Set(['/api/dashboard','/api/insights','/api/transfer-nodes','/api/node-outcomes','/api/agents','/api/waiting','/api/agent-history']);
+ const legacy=new Set(['/api/dashboard','/api/insights','/api/transfer-nodes','/api/node-outcomes','/api/agents','/api/waiting','/api/agent-history','/api/occupancy']);
  if(!route&&legacy.has(pathName)&&!isAdmin){send(res,403,JSON.stringify({error:'Use the API for your assigned report.'}),{'Content-Type':'application/json'});return}
  const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>16384){res.writeHead(413);res.end('Request too large');return}chunks.push(chunk)}
  const headers=new Headers();for(const [k,v]of Object.entries(req.headers)){if(v&&!['host','authorization','oai-authenticated-user-id','oai-authenticated-user-email','content-length'].includes(k.toLowerCase()))headers.set(k,Array.isArray(v)?v.join(','):v)}headers.set('oai-authenticated-user-email',isAdmin?env.OWNER_EMAIL:'oucu-viewer');if(trustedOrigin(headers.get('origin')))headers.set('origin',origin);
@@ -95,3 +95,4 @@ const server=http.createServer(async(req,res)=>{try{
  const request=new Request(workerURL,{method:req.method,headers,...(['GET','HEAD'].includes(req.method)?{}:{body:Buffer.concat(chunks)})});let response=await worker.fetch(request,env);if(route&&!route.page&&response.ok){const data=sanitizeReport(route.report,route.endpoint,await response.json(),session);response=new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json','Cache-Control':'no-store'}})}const out=Object.fromEntries(response.headers);if(response.headers.getSetCookie().length)out['set-cookie']=response.headers.getSetCookie();out['X-Content-Type-Options']='nosniff';out['Referrer-Policy']='same-origin';res.writeHead(response.status,out);res.end(Buffer.from(await response.arrayBuffer()));
  }catch(e){console.error('Request failed',e.message);res.writeHead(500,{'Content-Type':'text/plain'});res.end('Service unavailable. Check the Render logs.')}});
 server.listen(Number(process.env.PORT)||10000,'0.0.0.0',()=>console.log('OUCU dashboard running'));
+

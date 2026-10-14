@@ -13,6 +13,8 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22
+      - key: APP_ORIGIN
+        value: https://oucudashboard.bullfrog.net
       - key: DATA_DIR
         value: /var/data
       - key: APP_SECRET

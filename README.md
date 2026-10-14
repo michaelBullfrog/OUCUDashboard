@@ -9,7 +9,7 @@ The existing OUCU dashboard design includes queue health, call-volume charts, ag
 3. Set WEBEX_CLIENT_SECRET to the Integration's secret.
 4. Set WEBEX_ADMIN_EMAILS to your administrator account email **inside OUCU's organization**. Multiple dashboard administrators can be listed separated by commas. This allowlist controls who can connect reporting, not who can view the dashboard.
 5. Keep APP_SECRET unchanged on updates. New Blueprint deployments generate it automatically. Existing manually configured services need a long random APP_SECRET. Keep DATA_DIR=/var/data and a persistent disk mounted at /var/data. The Blueprint specifies a paid starter service with a 1 GB disk; review cost in Render before deployment.
-6. Remove DASHBOARD_USER and DASHBOARD_PASSWORD. APP_ORIGIN is optional; remove it to automatically use Render's RENDER_EXTERNAL_URL. A custom domain can use an explicit APP_ORIGIN override. Do not use a stale URL.
+6. Remove DASHBOARD_USER and DASHBOARD_PASSWORD. Set APP_ORIGIN to https://oucudashboard.bullfrog.net. This custom domain is also the application default; an old https://oucu-contact-center.onrender.com override is migrated to the new domain. Keep RENDER_EXTERNAL_URL as Render provides it.
 7. Update your Webex Integration:
    - Add scope `spark:people_read` for dashboard sign-in.
    - Keep scope `cjp:config_read` for reporting.
@@ -101,3 +101,10 @@ The report uses its own Analyzer date/filter controls; the dashboard From/To con
 ## Manager agent occupancy
 Manager-only `/api/reports/manager/occupancy` queries fully paginated Webex Search agentSession records with telephony channel totals. The exact OUCU formula is `(availableDuration + connectedDuration + wrapupDuration + outdialConnectedDuration + outdialWrapupDuration) / (MAX(endTime) - MIN(startTime)) * 100`, grouped by agent across the selected Eastern date range. All five native durations and timestamps are milliseconds. Gaps between sessions remain in the denominator; percentages are not clamped.
 The table shows each component and first login / last logout. When the selected range ends today and Webex reports isActive=true, the report timestamp replaces the last logout as spanEnd and the percentage is labeled Live. Closed sessions use the maximum recorded logout. An unconfirmed logout without an active-session flag, missing duration, invalid timestamps, or session crossing the selected boundaries makes the percentage unavailable; no prorated total is substituted. Native session totals displayed for a crossing session are accompanied by this warning. Today mode refreshes every 60 seconds; historical dates use Apply dates or Refresh. Responses are shared for 60 seconds, concurrent requests are coalesced, and 429 responses impose backoff. Agent and Senior routes cannot access this endpoint; legacy access requires administrator authentication. Personal agent active-time calculations remain separate.
+
+## Custom domain
+Canonical dashboard origin: https://oucudashboard.bullfrog.net. All three report paths remain /reports/senior, /reports/manager, and /reports/agent. Admin access remains /admin. Relative report links use the current domain. New host-only sessions require a fresh sign-in after moving domains.
+Register both exact redirect URIs in the existing Webex Integration:
+- https://oucudashboard.bullfrog.net/auth/webex/callback (dashboard Webex SSO)
+- https://oucudashboard.bullfrog.net/oauth/webex/callback (administrator reporting authorization)
+The server uses the canonical custom domain for OAuth authorization and token exchange and permits form submissions from it. The Render service URL remains an allowed origin for existing deployments; reporting tokens and organization/report access lists are unchanged. Future APP_ORIGIN overrides still work, except the retired Render-domain value maps to the canonical custom domain.

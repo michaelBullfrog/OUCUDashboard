@@ -7,7 +7,10 @@ import worker, { syncArchive } from './worker/index.js';
 import { createArchive } from './database.js';
 const required=['WEBEX_CLIENT_ID','WEBEX_CLIENT_SECRET','WEBEX_ORG_ID','APP_SECRET'];
 for(const k of required)if(!process.env[k])throw new Error(`Missing ${k}`);
-const origin=new URL(process.env.APP_ORIGIN||process.env.RENDER_EXTERNAL_URL).origin;
+const dashboardOrigin='https://oucudashboard.bullfrog.net';
+const configuredOrigin=new URL(process.env.APP_ORIGIN||dashboardOrigin).origin;
+// Migrate the previous Render origin even when an old environment override remains.
+const origin=configuredOrigin==='https://oucu-contact-center.onrender.com'?dashboardOrigin:configuredOrigin;
 const allowedOrigins=new Set([origin,...(process.env.RENDER_EXTERNAL_URL?[new URL(process.env.RENDER_EXTERNAL_URL).origin]:[])]);
 function trustedOrigin(value){try{return value===new URL(value).origin&&allowedOrigins.has(value)}catch{return false}}
 const dir=process.env.DATA_DIR||'./data';await fs.mkdir(dir,{recursive:true,mode:0o700});
@@ -45,6 +48,7 @@ function loginPage(){return `<!doctype html><html lang="en"><head><meta charset=
 const server=http.createServer(async(req,res)=>{try{
  if(req.url==='/health'){res.writeHead(200,{'Content-Type':'application/json'});res.end('{"status":"ok"}');return}
  const url=new URL(req.url,origin),pathName=url.pathname;
+ if(origin===dashboardOrigin&&String(req.headers.host||'').toLowerCase()==='oucu-contact-center.onrender.com'){send(res,307,'',{Location:origin+url.pathname+url.search});return}
  if(pathName==='/logo.png'){const response=await worker.fetch(new Request(url),env);send(res,response.status,Buffer.from(await response.arrayBuffer()),{'Content-Type':'image/png'});return}
  if(pathName==='/login'){send(res,200,loginPage(),{'Content-Type':'text/html;charset=utf-8'});return}
  if(pathName==='/admin'&&req.method==='GET'){

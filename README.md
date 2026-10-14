@@ -44,3 +44,23 @@ Actual FCR must use OUCU's agreed resolution measure (wrap-up outcomes or repeat
 Set ADMIN_ACCESS_PASSWORD in Render Environment to a unique password of at least 12 characters. Do not commit it to GitHub. Open https://YOUR-SERVICE.onrender.com/admin and enter that password. This signs in the trusted administrator directly, without requiring an OUCU Webex identity, and permits managing the reporting connection. Admin sessions last one hour.
 
 Admin access is disabled when ADMIN_ACCESS_PASSWORD is missing or shorter than 12 characters. Webex remains the regular user sign-in and still restricts users to OUCU. The admin page is separate from the user login. Login requires same-origin CSRF validation and rate-limits incorrect passwords to five attempts per 15-minute window; limits reset when the process restarts and may be shared by clients behind Render's proxy. Removing the admin password disables new admin logins; existing sessions last until expiry or APP_SECRET rotation.
+
+
+## Dashboard views and metric rules (October 14, 2026)
+- Senior Management: daily, Monday-based weekly, and monthly inbound voice trends for the selected Eastern date range. Partial weeks/months contain only selected dates.
+- Manager: inbound arrival volume by weekday/hour heat map and operational queue detail.
+- Call Center Agents: reported parked contacts, connected contacts, Available agents, current exact idle code, today's idle/call activity totals, team activity summary, and longest current/period queue waits.
+- OUCU Agent Details is intentionally omitted pending the customer's report configuration.
+- Handled remains the Webex isContactHandled flag, including answered transfers and active contacts.
+- Pre-queue exit percentage: completed, unhandled customer-left contacts without queue-contact/queued activity or reported queue entry, excluding TransferToDN, divided by all inbound contacts.
+- Post-entry abandonment percentage: unhandled terminationType abandoned contacts with queue entry, divided by all queued/presented contacts. The two percentages have different denominators.
+- Average queue wait: average queueDuration for inbound queued contacts whose reported status is connected or ended, as supplied by the customer. Missing values show Unavailable.
+- Service level: answered queued contacts with total queueDuration <= 15 seconds divided by all presented queued contacts. This differs from the previous completed-contact denominator.
+- Currently in queue: active telephony contacts with reported status parked and queue metadata.
+- Calls active: active telephony contacts with reported status connected.
+- Current longest wait: time since the active queued activity began; incomplete activity history or missing timestamps show Unavailable. This is not contact creation/IVR time.
+- Longest selected-period wait: maximum reported total queueDuration across queued inbound contacts.
+- Agent daily idle: voice idle intervals clipped at Eastern midnight, with Available excluded; overlapping call intervals removed. Exact idle-code totals are displayed.
+- Agent daily call time: union of connected, hold, consultation, conference and equivalent outbound voice intervals, clipped at Eastern midnight. Wrap-up and ringing are excluded. Overlapping activities count once.
+- Agent history requests paginate sessions and inner activities. Incomplete or invalid history yields Unavailable, not a partial total. Session discovery uses a seven-day lookback; sessions outside this reporting window are not reconstructed.
+- Reported state and daily activity refresh every 60 seconds and may lag Webex. Historical date mode hides current state and daily agent totals. There is no streaming/websocket feed.

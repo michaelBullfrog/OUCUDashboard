@@ -1,4 +1,7 @@
 import { DASHBOARD, LOGO } from './assets.js';
+import { dailyAgentData } from './agent-history.js';
+import { insights } from './insights.js';
+import { easternStart } from './reporting.js';
 import { agentData } from './agents.js';
 import { historicalReport } from './history.js';
 import { dashboardData } from './reporting.js';
@@ -36,6 +39,8 @@ export default {async fetch(request,env){const u=new URL(request.url);try{
  if(u.pathname==='/api/dashboard'&&request.method==='GET'){if(!request.headers.get('oai-authenticated-user-email'))return json({error:'Sign in required'},401);try{const date=u.searchParams.get('from')||u.searchParams.get('date'),toDate=u.searchParams.get('to')||date,today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York'}).format(new Date());if(date&&(u.searchParams.has('from')||date!==today)){const h=await historicalReport(env,()=>access(env),date,toDate);return json({...h.report,transfers:transferNodeCounts(h.unqueued)})}return json(await dashboardData(env,()=>access(env)))}catch(e){return json({error:e.message},503)}}
  if(u.pathname==='/api/transfer-nodes'&&request.method==='GET'){if(!request.headers.get('oai-authenticated-user-email'))return json({error:'Sign in required'},401);try{return json(transferNodeCounts(await unqueuedCalls(env,()=>access(env))))}catch(e){return json({error:'Transfer node counts are unavailable. An administrator can review Call metadata.'},503)}}
  if(u.pathname==='/api/node-outcomes'&&request.method==='GET'){if(!request.headers.get('oai-authenticated-user-email'))return json({error:'Sign in required'},401);try{return json(nodeOutcomeCounts(await unqueuedCalls(env,()=>access(env))))}catch(e){return json({error:'Node outcomes unavailable'},503)}}
+ if(u.pathname==='/api/insights'&&request.method==='GET'){if(!request.headers.get('oai-authenticated-user-email'))return json({error:'Sign in required'},401);try{const d=await allCalls(env,()=>access(env));return json({...insights(d.calls,easternStart(),Date.now()),updatedAt:d.updatedAt})}catch(e){return json({error:e.message},503)}}
+ if(u.pathname==='/api/agent-history'&&request.method==='GET'){if(!request.headers.get('oai-authenticated-user-email'))return json({error:'Sign in required'},401);try{return json(await dailyAgentData(env,()=>access(env)))}catch(e){return json({error:e.message},503)}}
  if(u.pathname==='/api/agents'&&request.method==='GET'){if(!request.headers.get('oai-authenticated-user-email'))return json({error:'Sign in required'},401);try{return json(await agentData(env,()=>access(env)))}catch(e){console.error('Agent reporting',e.message);return json({error:e.message},503)}}
  if(u.pathname==='/api/waiting'&&request.method==='GET'){if(!request.headers.get('oai-authenticated-user-email'))return json({error:'Sign in required'},401);try{return json(await waitingData(env,()=>access(env)))}catch(e){return json({error:e.message},503)}}
  if(!owner(request,env))return json({error:'Only the dashboard owner can manage the Webex connection.'},403);

@@ -62,7 +62,7 @@ export async function queueRemainderCalls(env,getToken){
  if(remainderCache&&Date.parse(remainderCache.value.from)===easternStart()&&Date.now()-remainderCache.time<60000)return remainderCache.value;
  if(remainderPending)return remainderPending;
  remainderPending=(async()=>{const token=await getToken();if(!token)throw Error('Connect Webex first.');const to=Date.now(),from=easternStart(to),calls=new Map(),seen=new Set();let cursor='NA',finished=false;
- for(let page=0;page<1000;page++){const r=await query(env,token,from,to,cursor);for(const t of r.tasks){if(t.createdTime>=from&&String(t.channelType).toLowerCase()==='telephony'&&String(t.direction).toLowerCase()==='inbound'&&t.lastQueue?.id&&!((t.isContactHandled===true)||(t.isActive===false&&String(t.contactHandleType).toLowerCase()==='abandoned')))calls.set(t.id,t)}if(r.pageInfo?.hasNextPage===false){finished=true;break}const next=r.pageInfo?.endCursor;if(!next||seen.has(next))throw Error('Call pagination is incomplete.');seen.add(next);cursor=next}
+ for(let page=0;page<1000;page++){const r=await query(env,token,from,to,cursor);for(const t of r.tasks){if(t.createdTime>=from&&String(t.channelType).toLowerCase()==='telephony'&&String(t.direction).toLowerCase()==='inbound'&&t.lastQueue?.id&&!((t.isContactHandled===true)||(String(t.terminationType).toLowerCase()==='abandoned')))calls.set(t.id,t)}if(r.pageInfo?.hasNextPage===false){finished=true;break}const next=r.pageInfo?.endCursor;if(!next||seen.has(next))throw Error('Call pagination is incomplete.');seen.add(next);cursor=next}
  if(!finished)throw Error('Call pagination limit exceeded.');
  for(const t of calls.values()){const seenActivities=new Set();for(let p=0;t.activities?.pageInfo?.hasNextPage&&p<100;p++){const next=t.activities.pageInfo.endCursor;if(!next||seenActivities.has(next))break;seenActivities.add(next);const r=await query(env,token,from,to,'NA',t.id,next),more=r.tasks.find(x=>x.id===t.id)?.activities;if(!more)break;t.activities={...more,nodes:[...t.activities.nodes,...more.nodes]}}}
  const value={from:new Date(from).toISOString(),updatedAt:new Date(to).toISOString(),calls:[...calls.values()].map(describeCall).sort((a,b)=>b.createdTime-a.createdTime)};remainderCache={time:Date.now(),value};return value;
@@ -101,10 +101,11 @@ export async function allCalls(env,getToken,date=null){
 }
 
 let waitingCache,waitingPending;
+export function queueWait(t,now){const a=t.activities;if(a?.pageInfo?.hasNextPage!==false)return null;const events=(a.nodes||[]).filter(n=>String(n.eventName).toLowerCase()==='queued'&&n.isActive===true&&Number.isFinite(n.createdTime)).sort((a,b)=>b.createdTime-a.createdTime);return events.length?Math.max(0,now-events[0].createdTime):null}
 export function waitingContacts(tasks,now){
- const calls=tasks.filter(t=>t.isActive===true&&t.lastQueue?.id&&['queued','parked'].includes(String(t.status||'').toLowerCase())&&String(t.channelType).toLowerCase()==='telephony')
- .map(t=>({id:t.id,number:t.origin||null,cnam:null,queueId:t.lastQueue.id,queue:t.lastQueue.name||'Queue',status:t.status,arrivedAt:Number.isFinite(t.createdTime)?new Date(t.createdTime).toISOString():null})).sort((a,b)=>String(a.arrivedAt).localeCompare(String(b.arrivedAt)));
- return {updatedAt:new Date(now).toISOString(),count:calls.length,calls};
+ const calls=tasks.filter(t=>t.isActive===true&&t.lastQueue?.id&&String(t.status||'').toLowerCase()==='parked'&&String(t.channelType).toLowerCase()==='telephony')
+ .map(t=>({id:t.id,number:t.origin||null,cnam:null,queueId:t.lastQueue.id,queue:t.lastQueue.name||'Queue',status:t.status,arrivedAt:Number.isFinite(t.createdTime)?new Date(t.createdTime).toISOString():null,waitTime:queueWait(t,now)})).sort((a,b)=>String(a.arrivedAt).localeCompare(String(b.arrivedAt)));
+ return {updatedAt:new Date(now).toISOString(),count:calls.length,active:tasks.filter(t=>t.isActive===true&&String(t.status).toLowerCase()==='connected'&&String(t.channelType).toLowerCase()==='telephony').length,longestWait:calls.length&&calls.every(c=>c.waitTime!==null)?Math.max(...calls.map(c=>c.waitTime)):null,calls};
 }
 export async function waitingData(env,getToken){
  if(waitingCache&&Date.now()-waitingCache.time<60000)return waitingCache.value;
@@ -113,7 +114,7 @@ export async function waitingData(env,getToken){
   const token=await getToken();if(!token)throw Error('Connect Webex first');
   const now=Date.now(),tasks=new Map(),seen=new Set();let cursor='NA';
   for(let p=0;p<1000;p++){
-   const query='query($from: Long!, $to: Long!) { taskDetails(from:$from,to:$to,filter:{isActive:{equals:true}},pagination:{cursor:'+JSON.stringify(cursor)+'}) { tasks { id channelType createdTime origin isActive status lastQueue { id name } } pageInfo { hasNextPage endCursor } } }';
+   const query='query($from: Long!, $to: Long!) { taskDetails(from:$from,to:$to,filter:{isActive:{equals:true}},pagination:{cursor:'+JSON.stringify(cursor)+'}) { tasks { id channelType createdTime origin isActive status lastQueue { id name } activities(first:100) { nodes { id eventName createdTime isActive } pageInfo { hasNextPage endCursor } } } pageInfo { hasNextPage endCursor } } }';
    const r=await fetch(env.WEBEX_API_BASE+'/search?orgId='+encodeURIComponent(env.WEBEX_ORG_ID),{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query,variables:{from:easternStart(now-7*86400000),to:now}}),signal:AbortSignal.timeout(20000)});
    if(!r.ok)throw Error('Queue reporting HTTP '+r.status);
    const v=await r.json(),d=v.data?.taskDetails;if(v.errors?.length||!Array.isArray(d?.tasks)||typeof d.pageInfo?.hasNextPage!=='boolean')throw Error('Queue reporting response unavailable');

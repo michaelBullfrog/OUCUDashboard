@@ -1,4 +1,5 @@
 import { easternStart, summarize, estimateFcr } from './reporting.js';
+import { insights } from './insights.js';
 import { allCalls } from './call-metadata.js';
 export async function historicalReport(env,getToken,date,toDate=date){
  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York'}).format(new Date());
@@ -21,7 +22,7 @@ export async function historicalReport(env,getToken,date,toDate=date){
  const records=new Map();
  for(let i=0;i<span;i++){const day=new Date(Date.parse(date+'T12:00:00Z')+i*86400000).toISOString().slice(0,10);for(const t of await readDay(day))records.set(t.id,t)}
  const calls=[...records.values()],report=summarize(calls,end,start,start);
- report.date=date;report.fromDate=date;report.toDate=toDate;report.historical=true;report.archivedOnly=archivedOnly;report.updatedAt=new Date().toISOString();
+ report.insights=insights(calls,start,end);report.date=date;report.fromDate=date;report.toDate=toDate;report.historical=true;report.archivedOnly=archivedOnly;report.updatedAt=new Date().toISOString();
  report.fcr=null;for(const q of report.queues)q.fcr=null;
  if(!archivedOnly){
   try{

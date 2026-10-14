@@ -26,7 +26,7 @@ export function summarizeAgents(sessions,now){
  return {updatedAt:new Date(now).toISOString(),agents:agents.sort((a,b)=>a.name.localeCompare(b.name)),queues:[...queues.values()],onCall:agents.filter(a=>a.status==='On call').length};
 }
 export async function agentData(env,getToken){
- if(cache&&Date.now()-cache.time<60000)return cache.value;
+ if(cache&&Date.now()-cache.time<15000)return cache.value;
  if(pending)return pending;
  if(Date.now()<retryAt)throw Error('Agent reporting rate limited');
  pending=(async()=>{
@@ -35,7 +35,7 @@ export async function agentData(env,getToken){
   for(let page=0;page<1000;page++){
    const query='query($from: Long!, $to: Long!) { agentSession(from:$from,to:$to,pagination:{cursor:'+JSON.stringify(cursor)+'},extFilter:{channelInfo:{activities:{nodes:{isCurrentActivity:{equals:true}}}}}) { agentSessions { agentId agentName agentSessionId startTime isActive state teamName channelInfo { channelType activities(first:100) { nodes { id state startTime isCurrentActivity idleCode { id name } taskId queue { id name } } pageInfo { hasNextPage endCursor } } } } pageInfo { hasNextPage endCursor } } }';
    const r=await fetch(env.WEBEX_API_BASE+'/search?orgId='+encodeURIComponent(env.WEBEX_ORG_ID),{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query,variables:{from:easternStart(now-7*86400000),to:now}}),signal:AbortSignal.timeout(20000)});
-   if(r.status===429){retryAt=Date.now()+60000;throw Error('Agent reporting rate limited')}
+   if(r.status===429){const seconds=Number(r.headers.get('Retry-After'));retryAt=Date.now()+Math.max(60,Number.isFinite(seconds)?seconds:60)*1000;throw Error('Agent reporting rate limited')}
    if(!r.ok)throw Error('Agent reporting HTTP '+r.status);
    const v=await r.json();if(v.errors?.length)throw Error('Webex rejected agent reporting fields');
    const d=v.data?.agentSession;if(!Array.isArray(d?.agentSessions)||typeof d.pageInfo?.hasNextPage!=='boolean')throw Error('Incomplete agent reporting');

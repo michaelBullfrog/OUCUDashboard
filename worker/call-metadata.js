@@ -100,7 +100,7 @@ export async function allCalls(env,getToken,date=null){
  })();allPending.set(date,work);try{return await work}finally{allPending.delete(date)}
 }
 
-let waitingCache,waitingPending;
+let waitingCache,waitingPending,waitingRetryAt=0;
 export function queueWait(t,now){const a=t.activities;if(a?.pageInfo?.hasNextPage!==false)return null;const events=(a.nodes||[]).filter(n=>String(n.eventName).toLowerCase()==='queued'&&n.isActive===true&&Number.isFinite(n.createdTime)).sort((a,b)=>b.createdTime-a.createdTime);return events.length?Math.max(0,now-events[0].createdTime):null}
 export function waitingContacts(tasks,now){
  const calls=tasks.filter(t=>t.isActive===true&&t.lastQueue?.id&&String(t.status||'').toLowerCase()==='parked'&&String(t.channelType).toLowerCase()==='telephony')
@@ -108,14 +108,16 @@ export function waitingContacts(tasks,now){
  return {updatedAt:new Date(now).toISOString(),count:calls.length,active:tasks.filter(t=>t.isActive===true&&String(t.status).toLowerCase()==='connected'&&String(t.channelType).toLowerCase()==='telephony').length,longestWait:calls.length&&calls.every(c=>c.waitTime!==null)?Math.max(...calls.map(c=>c.waitTime)):null,calls};
 }
 export async function waitingData(env,getToken){
- if(waitingCache&&Date.now()-waitingCache.time<60000)return waitingCache.value;
+ if(waitingCache&&Date.now()-waitingCache.time<15000)return waitingCache.value;
  if(waitingPending)return waitingPending;
+ if(Date.now()<waitingRetryAt)throw Error('Queue reporting is rate limited. Please retry shortly.');
  waitingPending=(async()=>{
   const token=await getToken();if(!token)throw Error('Connect Webex first');
   const now=Date.now(),tasks=new Map(),seen=new Set();let cursor='NA';
   for(let p=0;p<1000;p++){
    const query='query($from: Long!, $to: Long!) { taskDetails(from:$from,to:$to,filter:{isActive:{equals:true}},pagination:{cursor:'+JSON.stringify(cursor)+'}) { tasks { id channelType createdTime origin isActive status lastQueue { id name } activities(first:100) { nodes { id eventName createdTime isActive } pageInfo { hasNextPage endCursor } } } pageInfo { hasNextPage endCursor } } }';
    const r=await fetch(env.WEBEX_API_BASE+'/search?orgId='+encodeURIComponent(env.WEBEX_ORG_ID),{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({query,variables:{from:easternStart(now-7*86400000),to:now}}),signal:AbortSignal.timeout(20000)});
+   if(r.status===429){const seconds=Number(r.headers.get('Retry-After'));waitingRetryAt=Date.now()+Math.max(60,Number.isFinite(seconds)?seconds:60)*1000;throw Error('Queue reporting is rate limited. Please retry shortly.')}
    if(!r.ok)throw Error('Queue reporting HTTP '+r.status);
    const v=await r.json(),d=v.data?.taskDetails;if(v.errors?.length||!Array.isArray(d?.tasks)||typeof d.pageInfo?.hasNextPage!=='boolean')throw Error('Queue reporting response unavailable');
    for(const t of d.tasks)tasks.set(t.id,t);

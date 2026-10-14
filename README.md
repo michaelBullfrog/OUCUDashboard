@@ -63,7 +63,7 @@ Admin access is disabled when ADMIN_ACCESS_PASSWORD is missing or shorter than 1
 - Agent daily idle: voice idle intervals clipped at Eastern midnight, with Available excluded; overlapping call intervals removed. Exact idle-code totals are displayed.
 - Agent daily call time: union of connected, hold, consultation, conference and equivalent outbound voice intervals, clipped at Eastern midnight. Wrap-up and ringing are excluded. Overlapping activities count once.
 - Agent history requests paginate sessions and inner activities. Incomplete or invalid history yields Unavailable, not a partial total. Session discovery uses a seven-day lookback; sessions outside this reporting window are not reconstructed.
-- Reported state and daily activity refresh every 60 seconds and may lag Webex. Historical date mode hides current state and daily agent totals. There is no streaming/websocket feed.
+- Reported queue/team state refreshes every 15 seconds; KPIs and daily activity refresh every 60 seconds and may lag Webex. Historical date mode hides current state and daily agent totals. There is no streaming/websocket feed.
 
 
 ## Separate report access
@@ -85,3 +85,9 @@ The root URL lists only assigned reports and redirects users with one assignment
 ## Personal agent statistics
 The Agent Dashboard has separate side-by-side My Agent Statistics and Team Statistics panels (stacked on narrow screens). Its agent-history API filters individual data using the verified Webex session email and the Search API agentSession userLoginId. User-supplied query parameters, display names and report selectors do not choose an agent. Filtering occurs after the shared reporting cache is read, without changing that cache.
 Only one exact case-insensitive login match is accepted. Unmatched or ambiguous identities receive no individual records. Backup password administration has no agent identity and must use Webex sign-in to see personal statistics. Team daily totals are aggregated server-side before individual filtering; teammate names, login IDs and individual idle-code totals are not included in that personal-history response. Current team status remains available in the separate team status panel.
+
+
+## Today-only live wait timers
+Today-only mode polls current queued contacts and team status every 15 seconds, using matching shared server cache windows and request coalescing. Webex 429 responses impose a Retry-After backoff of at least 60 seconds. KPIs and daily personal/team duration totals retain 60-second polling.
+Each queued caller's wait timer advances every second using the reported queue wait plus server-measured report age and monotonic browser elapsed time. Contact/IVR creation time is never substituted for a missing queue-entry timestamp. Timers pause after report age exceeds 60 seconds; failed reporting clears current counts and timers. Current longest wait advances with these timers. Historical mode hides the live queue/status boxes and stops those requests.
+This is polling with local timer interpolation, not a streaming Webex event feed.

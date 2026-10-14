@@ -52,6 +52,17 @@ body:not(.agent-clean) .panel h2{color:var(--deep)}
 .agent-clean #agent-simple-sections>.stats-pair{margin-top:22px}
 @media(max-width:1000px){.agent-clean #existing-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.agent-clean #existing-kpis{padding:12px;gap:12px}}
+
+#senior-view .report-grid{gap:18px;padding:22px;background:#f7fafb}
+#senior-view .trend-chart{background:white;border:1px solid #cadde1;border-radius:10px;padding:18px 16px 12px;min-width:0}
+#senior-view .trend-heading{display:flex;flex-direction:column;gap:3px;padding:0 8px 10px}
+#senior-view .trend-heading>span{font-size:14px;font-weight:600;color:var(--muted)}
+#senior-view .trend-heading>strong{font-size:30px;line-height:1.2;letter-spacing:-.6px;color:var(--deep)}
+#senior-view .trend-heading>small{font-size:12px;color:var(--muted)}
+#senior-view .trend-chart svg{display:block;width:100%;height:auto;min-height:180px}
+#senior-view .trend-caption{font-size:11px;color:var(--muted);padding:3px 8px 0}
+#senior-view .trend-empty{height:210px;display:grid;place-items:center;color:var(--muted);font-size:13px}
+@media(max-width:700px){#senior-view .report-grid{padding:14px}#senior-view .trend-chart{padding:16px 10px 12px}}
 </style></head><body>
 <header><div class="brand"><img class="logo" src="/logo.png" alt="OUCU Financial"><div class="brandtext"><strong>Contact Center</strong><span>Supervisor workspace</span></div></div><div class="headright"><a id="call-metadata-link" href="/settings/calls" hidden style="color:var(--teal)">Call metadata</a><a id="metric-help-link" href="#manager-metric-help" hidden style="color:var(--teal)">Metric help</a><form method="post" action="/logout"><button>Sign out</button></form><span class="sample" id="connection">Loading reporting</span><div class="clock" id="clock">—</div></div></header>
 <main><section class="intro"><div><div class="eyebrow">MEMBER EXPERIENCE</div><h1 id="period-title">Today at a glance</h1><p id="period-note">Inbound voice contacts · Since midnight Eastern</p></div><div class="controls"><div class="date-controls"><label><input type="checkbox" id="today-toggle" checked> Today only · Live queue/status</label><label for="report-from">From</label><input type="date" id="report-from" disabled><label for="report-to">To</label><input type="date" id="report-to" disabled><button id="apply-dates" disabled>Apply dates</button></div><div class="queue-controls"><label for="queue">Queue</label><select id="queue"><option value="all">All queues</option></select><button id="refresh">Refresh</button></div></div><span id="date-error" class="date-help" role="status">Eastern time · Up to 31 days</span></section>
@@ -192,10 +203,30 @@ function updateView(){
 }
 document.querySelectorAll('[data-view]').forEach(b=>{b.hidden=true;b.onclick=()=>{location.href='/reports/'+b.dataset.view}});
 function trendChart(rows,key,label,format){
- const values=rows.map(r=>r[key]),max=Math.max(1,...values.filter(v=>v!==null));let svg='<svg viewBox="0 0 360 150" role="img" aria-label="'+label+'">';
- const step=330/Math.max(1,rows.length);
- rows.forEach((r,i)=>{if(r[key]===null)return;const height=r[key]/max*105;svg+='<rect x="'+(15+i*step)+'" y="'+(120-height)+'" width="'+Math.max(2,step-4)+'" height="'+height+'" fill="#0b8295"><title>'+escapeText(r.date+' · '+format(r[key]))+'</title></rect>'});
- return '<strong>'+label+'</strong>'+svg+'</svg><span class="meta">'+rows.length+' periods · See values below</span>';
+ const valid=rows.map((r,i)=>({r,i,value:r[key]})).filter(p=>Number.isFinite(p.value)&&p.value>=0);
+ const dateLabel=date=>{const d=new Date(date+'T12:00:00Z');return Number.isFinite(d.getTime())?d.toLocaleDateString('en-US',{timeZone:'UTC',month:'short',day:'numeric'}):date};
+ const last=rows.at(-1),headline=key==='volume'?rows.reduce((sum,r)=>sum+(Number.isFinite(r[key])?r[key]:0),0):last?.[key]??null;
+ const subtitle=key==='volume'?'Total across selected periods':last?'Latest period · '+dateLabel(last.date):'No selected periods';
+ const head='<div class="trend-heading"><span>'+escapeText(label)+'</span><strong>'+escapeText(format(headline))+'</strong><small>'+escapeText(subtitle)+'</small></div>';
+ if(!rows.length||!valid.length)return head+'<div class="trend-empty">No reported values for this period</div>';
+ const peak=Math.max(...valid.map(p=>p.value)),unit=key==='averageWait'?1000:1,raw=Math.max(1,peak/unit/4),power=10**Math.floor(Math.log10(raw)),step=[1,2,5,10].find(n=>n*power>=raw)*power*unit,max=step*4;
+ const left=48,right=462,top=20,bottom=204,width=right-left,height=bottom-top,slot=width/Math.max(1,rows.length),x=i=>left+slot*(i+.5),y=v=>bottom-v/max*height,color=key==='abandonRate'?'#a96925':'#0b8295',gradient='trend-fill-'+key;
+ let svg='<svg viewBox="0 0 480 250" role="img" aria-label="'+escapeText(label)+' by period"><defs><linearGradient id="'+gradient+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="'+color+'" stop-opacity=".18"/><stop offset="100%" stop-color="'+color+'" stop-opacity=".02"/></linearGradient></defs>';
+ for(let i=0;i<=4;i++){const v=i*step,yy=y(v),tick=key==='volume'?String(v):key==='abandonRate'?v.toFixed(v<1?1:0)+'%':duration(v);svg+='<line x1="'+left+'" x2="'+right+'" y1="'+yy+'" y2="'+yy+'" stroke="#e1ebed" stroke-width="1"/><text x="'+(left-8)+'" y="'+(yy+4)+'" text-anchor="end" fill="#60777b" font-size="11">'+escapeText(tick)+'</text>'}
+ if(key==='volume'){
+  const bar=Math.min(32,slot*.65);
+  for(const p of valid){const h=bottom-y(p.value);svg+='<rect x="'+(x(p.i)-bar/2)+'" y="'+y(p.value)+'" width="'+bar+'" height="'+h+'" rx="3" fill="'+color+'"><title>'+escapeText(dateLabel(p.r.date)+' · '+format(p.value))+'</title></rect>'}
+ }else{
+  const segments=[];let segment=[];
+  rows.forEach((r,i)=>{if(Number.isFinite(r[key])&&r[key]>=0)segment.push({i,value:r[key],date:r.date});else if(segment.length){segments.push(segment);segment=[]}});if(segment.length)segments.push(segment);
+  for(const points of segments){const path=points.map((p,i)=>(i?'L':'M')+x(p.i)+' '+y(p.value)).join(' ');
+   if(points.length>1)svg+='<path d="'+path+' L'+x(points.at(-1).i)+' '+bottom+' L'+x(points[0].i)+' '+bottom+' Z" fill="url(#'+gradient+')"/><path d="'+path+'" fill="none" stroke="'+color+'" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>';
+   for(const p of points)svg+='<circle cx="'+x(p.i)+'" cy="'+y(p.value)+'" r="'+(rows.length<=14?3:2)+'" fill="white" stroke="'+color+'" stroke-width="2"><title>'+escapeText(dateLabel(p.date)+' · '+format(p.value))+'</title></circle>';
+  }
+ }
+ const indexes=[...new Set([0,Math.round((rows.length-1)/3),Math.round((rows.length-1)*2/3),rows.length-1])];
+ for(const i of indexes)svg+='<text x="'+x(i)+'" y="231" text-anchor="middle" fill="#60777b" font-size="11">'+escapeText(dateLabel(rows[i].date))+'</text>';
+ svg+='</svg>';return head+svg+'<div class="trend-caption">'+rows.length+' '+escapeText($('trend-period').selectedOptions?.[0]?.textContent?.toLowerCase()||'')+' periods · Hover for values'+(valid.length<rows.length?' · Missing values are omitted':'')+'</div>';
 }
 function renderInsights(){
  if(!insightReport)return;const d=insightReport;

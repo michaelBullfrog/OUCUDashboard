@@ -1,26 +1,28 @@
 import { easternStart } from './reporting.js';
 
 const fields=['availableDuration','connectedDuration','wrapupDuration','outdialConnectedDuration','outdialWrapupDuration'];
-export function occupancyRows(sessions,from,to){
+export function occupancyRows(sessions,from,to,liveNow=null){
  const agents=new Map(),seen=new Set();
  for(const s of sessions){
   if(!s.agentSessionId||seen.has(s.agentSessionId))continue;seen.add(s.agentSessionId);
   if(Number.isFinite(s.endTime)&&s.endTime>0&&s.endTime<=from||Number.isFinite(s.startTime)&&s.startTime>to)continue;
   const channels=(s.channelInfo||[]).filter(c=>String(c.channelType).toLowerCase()==='telephony');if(!channels.length)continue;
-  if(!agents.has(s.agentId))agents.set(s.agentId,{id:s.agentId,name:s.agentName||'Agent',team:s.teamName||'',sessions:0,firstLogin:null,lastLogout:null,...Object.fromEntries(fields.map(f=>[f,0])),reasons:new Set()});
+  if(!agents.has(s.agentId))agents.set(s.agentId,{id:s.agentId,name:s.agentName||'Agent',team:s.teamName||'',sessions:0,firstLogin:null,lastLogout:null,live:false,...Object.fromEntries(fields.map(f=>[f,0])),reasons:new Set()});
   const a=agents.get(s.agentId);a.sessions++;
   if(Number.isFinite(s.startTime))a.firstLogin=a.firstLogin===null?s.startTime:Math.min(a.firstLogin,s.startTime);else a.reasons.add('Login timestamp missing');
   if(Number.isFinite(s.endTime)&&s.endTime>0)a.lastLogout=a.lastLogout===null?s.endTime:Math.max(a.lastLogout,s.endTime);
-  if(s.isActive===true||!Number.isFinite(s.endTime)||s.endTime<=0)a.reasons.add('Awaiting reported logout');
+  if(s.isActive===true&&Number.isFinite(liveNow)&&liveNow===to)a.live=true;
+  else if(s.isActive===true||!Number.isFinite(s.endTime)||s.endTime<=0)a.reasons.add('Awaiting reported logout');
   if(Number.isFinite(s.startTime)&&s.startTime<from||Number.isFinite(s.endTime)&&s.endTime>to)a.reasons.add('Session crosses selected date range');
   if(Number.isFinite(s.startTime)&&Number.isFinite(s.endTime)&&s.endTime>0&&s.endTime<=s.startTime)a.reasons.add('Invalid session timestamps');
   for(const c of channels)for(const f of fields){if(!Number.isFinite(c[f])||c[f]<0){a[f]=null;a.reasons.add('Duration fields incomplete')}else if(a[f]!==null)a[f]+=c[f]}
  }
  return [...agents.values()].map(a=>{
-  const span=a.firstLogin!==null&&a.lastLogout!==null?a.lastLogout-a.firstLogin:null;
+  const spanEnd=a.live?liveNow:a.lastLogout;
+  const span=a.firstLogin!==null&&spanEnd!==null?spanEnd-a.firstLogin:null;
   const numerator=fields.every(f=>a[f]!==null)?fields.reduce((v,f)=>v+a[f],0):null;
   if(span!==null&&span<=0)a.reasons.add('Invalid login-to-logout span');
-  return {...a,reasons:[...a.reasons],signedInSpan:span>0?span:null,numerator,occupancy:a.reasons.size===0&&span>0&&numerator!==null?100*numerator/span:null};
+  return {...a,reasons:[...a.reasons],spanEnd,signedInSpan:span>0?span:null,numerator,occupancy:a.reasons.size===0&&span>0&&numerator!==null?100*numerator/span:null};
  }).sort((a,b)=>a.name.localeCompare(b.name));
 }
 
@@ -30,7 +32,7 @@ export function occupancyRange(date,toDate,now=Date.now()){
  const days=(Date.parse(toDate+'T12:00:00Z')-Date.parse(date+'T12:00:00Z'))/86400000+1;
  if(days<1||days>31)throw Error('Choose an ordered range of up to 31 days.');
  const from=easternStart(Date.parse(date+'T12:00:00Z')),last=easternStart(Date.parse(toDate+'T12:00:00Z'));
- return {date,toDate,from,to:Math.min(now,easternStart(last+36*3600000)-1)};
+ return {date,toDate,from,now,to:Math.min(now,easternStart(last+36*3600000)-1)};
 }
 const cache=new Map(),pending=new Map();let retryAt=0;
 export async function occupancyData(env,getToken,date,toDate){
@@ -53,7 +55,7 @@ export async function occupancyData(env,getToken,date,toDate){
    const next=d.pageInfo.endCursor;if(!next||seen.has(next))throw Error('Agent occupancy pagination is incomplete');seen.add(next);cursor=next;
   }
   if(!finished)throw Error('Agent occupancy pagination limit exceeded');
-  const value={updatedAt:new Date().toISOString(),fromDate:range.date,toDate:range.toDate,agents:occupancyRows([...sessions.values()],range.from,range.to)};
+  const value={updatedAt:new Date().toISOString(),fromDate:range.date,toDate:range.toDate,agents:occupancyRows([...sessions.values()],range.from,range.to,range.to===range.now?range.now:null)};
   cache.set(key,{time:Date.now(),value});if(cache.size>8)cache.delete(cache.keys().next().value);return value;
  })();pending.set(key,work);try{return await work}finally{pending.delete(key)}
 }
